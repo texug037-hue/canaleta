@@ -21,10 +21,8 @@ var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
 const STORAGE_KEY = "canaleta_machines_v1";
 async function persistSave(machines) {
   try {
-    const data = JSON.stringify(machines);
-    localStorage.setItem(STORAGE_KEY, data);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(machines));
   } catch (e) {
-    console.warn("Save error:", e);
   }
 }
 async function persistLoad() {
@@ -197,16 +195,42 @@ function LoginScreen({ onLogin, users: propUsers, onExport, onImport }) {
     /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, opacity: 0.6, fontWeight: 400 } }, "salvar .json backup")
   )), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#1a2a3a", textAlign: "center", marginTop: 8 } }, "Importe antes de entrar para restaurar seus dados")));
 }
-function ProductionDashboard({ session, onGoPanel, onLogout, onSettings, hideHeader }) {
-  const days = Object.keys(TEST_DAYS).sort((a, b) => {
+function ProductionDashboard({ session, machines, onGoPanel, onLogout, onSettings, hideHeader }) {
+  const clock = useClock();
+  const buildDaysFromHistory = () => {
+    const dayMap2 = {};
+    (machines || []).forEach((m) => {
+      (m.history || []).forEach((rec) => {
+        var _a, _b;
+        const datePart = (_b = (_a = rec.date) == null ? void 0 : _a.split(",")[0]) == null ? void 0 : _b.trim();
+        if (!datePart) return;
+        if (!dayMap2[datePart]) dayMap2[datePart] = { A: [], B: [] };
+        const turno = rec.turno || "A";
+        const existing = dayMap2[datePart][turno].find((r) => r.line === m.name && r.product === rec.produto);
+        if (existing) {
+          existing.produced += rec.producaoReal || 0;
+        } else {
+          dayMap2[datePart][turno].push({
+            line: m.name,
+            product: rec.produto || "\u2014",
+            produced: rec.producaoReal || 0,
+            target: rec.ciclosPeriodo || 0
+          });
+        }
+      });
+    });
+    return dayMap2;
+  };
+  const dayMap = buildDaysFromHistory();
+  const days = Object.keys(dayMap).sort((a, b) => {
     const p = (d) => {
       const x = d.split("/");
-      return new Date(x[2], x[1] - 1, x[0]);
+      return new Date(+x[2], +x[1] - 1, +x[0]);
     };
     return p(b) - p(a);
   });
-  const [selDay, setSelDay] = useState(days[0]);
-  const dd = TEST_DAYS[selDay] || { A: [], B: [] };
+  const [selDay, setSelDay] = useState(days[0] || "");
+  const dd = dayMap[selDay] || { A: [], B: [] };
   const lines = [...new Set([...dd.A, ...dd.B].map((r) => r.line))];
   function MiniBar({ value, target, color }) {
     const pct = Math.min(100, Math.round(value / (target || 1) * 100));
@@ -224,7 +248,15 @@ function ProductionDashboard({ session, onGoPanel, onLogout, onSettings, hideHea
     /* @__PURE__ */ React.createElement("div", { style: { width: 34, height: 34, borderRadius: "50%", background: "#1a2636", border: "1px solid #2a4a6a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } }, /* @__PURE__ */ React.createElement("svg", { width: "18", height: "18", viewBox: "0 0 24 24", fill: "none", stroke: "#4a8aff", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("circle", { cx: "12", cy: "8", r: "4" }), /* @__PURE__ */ React.createElement("path", { d: "M4 20c0-4 3.6-7 8-7s8 3 8 7" }))),
     /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: "#e0e8ff", lineHeight: 1 } }, session.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#7ab8ff", marginTop: 3, textTransform: "capitalize" } }, session.role)),
     /* @__PURE__ */ React.createElement("div", { style: { marginLeft: "auto", fontSize: 10, color: "#2a4a6a" } }, "\u25B8")
-  ), /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#3a5a7a", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 8 } }, "Dia"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 } }, days.map((d) => /* @__PURE__ */ React.createElement("button", { key: d, onClick: () => setSelDay(d), style: { background: selDay === d ? "#1e3050" : "#0d1117", border: "1px solid " + (selDay === d ? "#4a8aff88" : "#1e2636"), color: selDay === d ? "#7ab8ff" : "#5a6a8a", borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 11, fontFamily: "monospace", whiteSpace: "nowrap", flexShrink: 0, fontWeight: selDay === d ? 700 : 400 } }, d)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 16, marginBottom: 14 } }, [["Turno A", "#4a8aff", "05:00\u201317:00"], ["Turno B", "#c47aff", "17:00\u201305:00"]].map(([l, c, t]) => /* @__PURE__ */ React.createElement("div", { key: l, style: { display: "flex", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement("span", { style: { width: 10, height: 10, borderRadius: 2, background: c, display: "inline-block" } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: c } }, l, " \xB7 ", t)))), lines.map((line) => {
+  ), days.length > 0 ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#3a5a7a", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 8 } }, "Dia"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 } }, days.map((d) => /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      key: d,
+      onClick: () => setSelDay(d),
+      style: { background: selDay === d ? "#1e3050" : "#0d1117", border: "1px solid " + (selDay === d ? "#4a8aff88" : "#1e2636"), color: selDay === d ? "#7ab8ff" : "#5a6a8a", borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 11, fontFamily: "monospace", whiteSpace: "nowrap", flexShrink: 0, fontWeight: selDay === d ? 700 : 400 }
+    },
+    d
+  )))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 16, marginBottom: 14 } }, [["Turno A", "#4a8aff", "05:00\u201317:00"], ["Turno B", "#c47aff", "17:00\u201305:00"]].map(([l, c, t]) => /* @__PURE__ */ React.createElement("div", { key: l, style: { display: "flex", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement("span", { style: { width: 10, height: 10, borderRadius: 2, background: c, display: "inline-block" } }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: c } }, l, " \xB7 ", t)))), lines.map((line) => {
     const iA = dd.A.filter((r) => r.line === line);
     const iB = dd.B.filter((r) => r.line === line);
     const products = [...new Set([...iA, ...iB].map((r) => r.product))];
@@ -232,14 +264,15 @@ function ProductionDashboard({ session, onGoPanel, onLogout, onSettings, hideHea
       var _a, _b;
       const rA = iA.find((r) => r.product === product);
       const rB = iB.find((r) => r.product === product);
-      const tgt = (rA == null ? void 0 : rA.target) || (rB == null ? void 0 : rB.target) || 0;
+      const tgt = Math.max((rA == null ? void 0 : rA.target) || 0, (rB == null ? void 0 : rB.target) || 0);
       const pA = (_a = rA == null ? void 0 : rA.produced) != null ? _a : 0;
       const pB = (_b = rB == null ? void 0 : rB.produced) != null ? _b : 0;
-      const dA = tgt - pA;
-      const dB = tgt - pB;
-      return /* @__PURE__ */ React.createElement("div", { key: product, style: { padding: "12px 14px", borderBottom: "1px solid #111622" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "#c8d8f0", marginBottom: 10 } }, product), rA && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 3 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#4a8aff", fontWeight: 700 } }, "Turno A"), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16, fontWeight: 700, color: "#4a8aff" } }, pA.toLocaleString("pt-BR")), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#3a5a7a", marginLeft: 4 } }, "p\xE7s"), dA > 0 ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#ff4d6d", marginLeft: 6 } }, "\u25BC", dA) : /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#00e5a0", marginLeft: 6 } }, "\u2713"))), /* @__PURE__ */ React.createElement(MiniBar, { value: pA, target: tgt, color: "#4a8aff" })), rB && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 3 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#c47aff", fontWeight: 700 } }, "Turno B"), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16, fontWeight: 700, color: "#c47aff" } }, pB.toLocaleString("pt-BR")), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#3a5a7a", marginLeft: 4 } }, "p\xE7s"), dB > 0 ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#ff4d6d", marginLeft: 6 } }, "\u25BC", dB) : /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#00e5a0", marginLeft: 6 } }, "\u2713"))), /* @__PURE__ */ React.createElement(MiniBar, { value: pB, target: tgt, color: "#c47aff" })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginTop: 6, paddingTop: 6, borderTop: "1px solid #1a2235" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#3a5a7a" } }, "Total A+B \xB7 Meta/turno: ", tgt.toLocaleString("pt-BR")), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: pA + pB >= tgt * 2 ? "#00e5a0" : "#f5a623" } }, (pA + pB).toLocaleString("pt-BR"), " p\xE7s")));
+      return /* @__PURE__ */ React.createElement("div", { key: product, style: { padding: "12px 14px", borderBottom: "1px solid #111622" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "#c8d8f0", marginBottom: 10 } }, product), rA && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 3 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#4a8aff", fontWeight: 700 } }, "Turno A"), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16, fontWeight: 700, color: "#4a8aff" } }, pA.toLocaleString("pt-BR")), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#3a5a7a", marginLeft: 4 } }, "p\xE7s"), tgt > 0 && (pA >= tgt ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#00e5a0", marginLeft: 6 } }, "\u2713") : /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#ff4d6d", marginLeft: 6 } }, "\u25BC", tgt - pA)))), /* @__PURE__ */ React.createElement(MiniBar, { value: pA, target: tgt || pA, color: "#4a8aff" })), rB && /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 3 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#c47aff", fontWeight: 700 } }, "Turno B"), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16, fontWeight: 700, color: "#c47aff" } }, pB.toLocaleString("pt-BR")), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#3a5a7a", marginLeft: 4 } }, "p\xE7s"), tgt > 0 && (pB >= tgt ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#00e5a0", marginLeft: 6 } }, "\u2713") : /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#ff4d6d", marginLeft: 6 } }, "\u25BC", tgt - pB)))), /* @__PURE__ */ React.createElement(MiniBar, { value: pB, target: tgt || pB, color: "#c47aff" })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginTop: 6, paddingTop: 6, borderTop: "1px solid #1a2235" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#3a5a7a" } }, "Total A+B"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: "#f5a623" } }, (pA + pB).toLocaleString("pt-BR"), " p\xE7s")));
     }));
-  }), /* @__PURE__ */ React.createElement("div", { style: { background: "#0d1117", border: "1px solid #1e2636", borderRadius: 12, padding: "14px 16px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#3a5a7a", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 10 } }, "Totais do dia \u2014 ", selDay), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, [["Turno A", dd.A.reduce((s, r) => s + r.produced, 0), "#4a8aff"], ["Turno B", dd.B.reduce((s, r) => s + r.produced, 0), "#c47aff"], ["Geral", [...dd.A, ...dd.B].reduce((s, r) => s + r.produced, 0), "#00e5a0"]].map(([l, v, c]) => /* @__PURE__ */ React.createElement("div", { key: l, style: { flex: 1, background: "#111622", borderRadius: 10, padding: "10px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: c, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4, opacity: 0.8 } }, l), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: c } }, v.toLocaleString("pt-BR")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "#3a5a7a", marginTop: 2 } }, "p\xE7s")))))));
+  }), /* @__PURE__ */ React.createElement("div", { style: { background: "#0d1117", border: "1px solid #1e2636", borderRadius: 12, padding: "14px 16px", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#3a5a7a", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 10 } }, "Totais \u2014 ", selDay), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, [["Turno A", dd.A.reduce((s, r) => s + r.produced, 0), "#4a8aff"], ["Turno B", dd.B.reduce((s, r) => s + r.produced, 0), "#c47aff"], ["Geral", [...dd.A, ...dd.B].reduce((s, r) => s + r.produced, 0), "#00e5a0"]].map(([l, v, c]) => /* @__PURE__ */ React.createElement("div", { key: l, style: { flex: 1, background: "#111622", borderRadius: 10, padding: "10px", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: c, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4, opacity: 0.8 } }, l), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: c } }, v.toLocaleString("pt-BR")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "#3a5a7a", marginTop: 2 } }, "p\xE7s")))))) : (
+    /* Sem histórico ainda */
+    /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "60px 20px", color: "#2a3a4a" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 32, marginBottom: 16 } }, "\u{1F4CA}"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#3a5a7a", marginBottom: 8 } }, "Sem registros ainda"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#2a3a4a" } }, "Os dados aparecem aqui conforme os turnos forem finalizados"))
+  )));
 }
 let _uid = 10;
 function uid() {
@@ -293,345 +326,7 @@ const ST = {
   idle: { label: "Aguardando", color: "#f5a623", bg: "#f5a62318" },
   maintenance: { label: "Manuten\xE7\xE3o", color: "#4fc3f7", bg: "#4fc3f718" }
 };
-const INIT_MACHINES = [
-  {
-    "id": "CAN-01",
-    "name": "EXT 02",
-    "model": "Perfiladeira CAN-500",
-    "status": "running",
-    "operator": "Fabr\xEDcio",
-    "job": {
-      "orderId": "1.292.285",
-      "product": "Canaleta 30X30X2000mm BR SEMI ABERTA. (CX 9035)",
-      "produced": 650,
-      "startTime": "17:00",
-      "estimatedEnd": "05:00",
-      "cycleTime": 46,
-      "piecesPerCycle": 1,
-      "pieceWeight": 0.42
-    },
-    "metrics": {
-      "temperature": 58,
-      "speed": 15.8,
-      "tempZones": [
-        {
-          "name": "Zona 1",
-          "value": 170
-        },
-        {
-          "name": "Zona 2",
-          "value": 173
-        },
-        {
-          "name": "Zona 3",
-          "value": 172
-        },
-        {
-          "name": "Zona 4",
-          "value": 170
-        },
-        {
-          "name": "Zona 5",
-          "value": 160
-        },
-        {
-          "name": "Cabe\xE7ote 1",
-          "value": 175
-        },
-        {
-          "name": "Cabe\xE7ote 2",
-          "value": 180
-        },
-        {
-          "name": "Cabe\xE7ote 4",
-          "value": 160
-        }
-      ]
-    },
-    "maintenanceNote": "",
-    "history": [
-      {
-        "date": "01/06/2026, 20:10",
-        "turno": "A",
-        "_name": "EXT 02",
-        "maquina": "EXT 02",
-        "operador": "Luis",
-        "statusLabel": "Em opera\xE7\xE3o",
-        "produto": "Canaleta 30X30X2000mm BR SEMI ABERTA",
-        "orderId": "1.292.285",
-        "inicio": "05:00",
-        "termino": "17:00",
-        "ciclo": 46,
-        "ciclosPeriodo": 939,
-        "producaoReal": 650,
-        "diferenca": 289,
-        "pesoTotal": 394.38,
-        "perdaKg": 121.38,
-        "metricas": [
-          {
-            "name": "Zona 1",
-            "value": 170
-          },
-          {
-            "name": "Zona 2",
-            "value": 173
-          },
-          {
-            "name": "Zona 3",
-            "value": 172
-          },
-          {
-            "name": "Zona 4",
-            "value": 170
-          },
-          {
-            "name": "Zona 5",
-            "value": 160
-          },
-          {
-            "name": "Cabe\xE7ote 1",
-            "value": 175
-          },
-          {
-            "name": "Cabe\xE7ote 2",
-            "value": 180
-          },
-          {
-            "name": "Cabe\xE7ote 4",
-            "value": 160
-          }
-        ],
-        "velocidade": 15.8
-      }
-    ]
-  },
-  {
-    "id": "CAN-02",
-    "name": "EXT 04",
-    "model": "Perfiladeira CAN-500",
-    "status": "running",
-    "operator": "Leandro",
-    "job": {
-      "orderId": "OP-2024-1002",
-      "product": "Canaleta 20X10X2000mm C/DIVIS\xD3RIA C/ FITA DF",
-      "produced": 3599,
-      "startTime": "17:00",
-      "estimatedEnd": "05:00",
-      "cycleTime": 25,
-      "piecesPerCycle": 1,
-      "pieceWeight": 0.13
-    },
-    "metrics": {
-      "temperature": 61,
-      "speed": 34.3,
-      "tempZones": [
-        {
-          "name": "Zona 1",
-          "value": 170
-        },
-        {
-          "name": "Zona 2",
-          "value": 172.2
-        },
-        {
-          "name": "Zona 3",
-          "value": 177
-        },
-        {
-          "name": "Zona 4",
-          "value": 160
-        },
-        {
-          "name": "Zona 5",
-          "value": 169
-        },
-        {
-          "name": "Zona 6",
-          "value": 180
-        },
-        {
-          "name": "Zona 7",
-          "value": 191
-        }
-      ]
-    },
-    "maintenanceNote": "",
-    "history": [
-      {
-        "date": "01/06/2026, 20:35",
-        "turno": "A",
-        "_name": "EXT 04",
-        "maquina": "EXT 04",
-        "operador": "Cleiton",
-        "statusLabel": "Em opera\xE7\xE3o",
-        "produto": "Canaleta 20X10X2000mm C/DIVIS\xD3RIA C/ FITA DF",
-        "orderId": "OP-2024-1002",
-        "inicio": "05:00",
-        "termino": "17:00",
-        "ciclo": 25,
-        "ciclosPeriodo": 1728,
-        "producaoReal": 1300,
-        "diferenca": 428,
-        "pesoTotal": 224.64,
-        "perdaKg": 55.64,
-        "metricas": [
-          {
-            "name": "Zona 1",
-            "value": 170
-          },
-          {
-            "name": "Zona 2",
-            "value": 172.2
-          },
-          {
-            "name": "Zona 3",
-            "value": 177
-          },
-          {
-            "name": "Zona 4",
-            "value": 160
-          },
-          {
-            "name": "Zona 5",
-            "value": 169
-          },
-          {
-            "name": "Zona 6",
-            "value": 180
-          },
-          {
-            "name": "Zona 7",
-            "value": 191
-          }
-        ],
-        "velocidade": 34.3
-      }
-    ]
-  },
-  {
-    "id": "CAN-03",
-    "name": "EXT 08",
-    "model": "Perfiladeira CAN-800",
-    "status": "running",
-    "operator": "Felipe",
-    "job": {
-      "orderId": "OP-2024-1003",
-      "product": "Canaleta 20X10X2000mm C/ DF",
-      "produced": 512,
-      "startTime": "17:00",
-      "estimatedEnd": "05:00",
-      "cycleTime": 23,
-      "piecesPerCycle": 2,
-      "pieceWeight": 0.13
-    },
-    "metrics": {
-      "temperature": 55,
-      "speed": 52118454,
-      "tempZones": [
-        {
-          "name": "Cabe\xE7ote Zona 1",
-          "value": 165
-        },
-        {
-          "name": "Cabe\xE7ote Zona 2",
-          "value": 227
-        },
-        {
-          "name": "Cabe\xE7ote Zona 3",
-          "value": 182
-        },
-        {
-          "name": "Cabe\xE7ote Zona 4",
-          "value": 182
-        },
-        {
-          "name": "Canh\xE3o Zona 1",
-          "value": 180
-        },
-        {
-          "name": "Canh\xE3o Zona 2",
-          "value": 182
-        },
-        {
-          "name": "Canh\xE3o Zona 3",
-          "value": 185.1
-        },
-        {
-          "name": "Canh\xE3o Zona 4",
-          "value": 185
-        }
-      ]
-    },
-    "maintenanceNote": "",
-    "history": []
-  },
-  {
-    "id": "CAN-04",
-    "name": "EXT 09",
-    "model": "Perfiladeira CAN-500",
-    "status": "maintenance",
-    "operator": "Equipe Manuten\xE7\xE3o",
-    "job": null,
-    "metrics": {
-      "temperature": 30,
-      "speed": 0,
-      "tempZones": []
-    },
-    "maintenanceNote": "DESMONTADA",
-    "history": []
-  },
-  {
-    "id": "CAN-05",
-    "name": "EXT 07",
-    "model": "Perfiladeira CAN-800",
-    "status": "maintenance",
-    "operator": "Equipe Manuten\xE7\xE3o",
-    "job": null,
-    "metrics": {
-      "temperature": 30,
-      "speed": 0,
-      "tempZones": []
-    },
-    "maintenanceNote": "DESMONTADA",
-    "history": []
-  },
-  {
-    "id": "CAN-06",
-    "name": "EXT 05",
-    "model": "Perfiladeira CAN-500",
-    "status": "idle",
-    "operator": "\u2014",
-    "job": null,
-    "metrics": {
-      "temperature": 32,
-      "speed": 0,
-      "tempZones": []
-    },
-    "maintenanceNote": "SEM PRODU\xC7\xC3O",
-    "history": [
-      {
-        "date": "01/06/2026, 20:37",
-        "turno": "B",
-        "_name": "Canaleta #6",
-        "maquina": "Canaleta #6",
-        "operador": "\u2014",
-        "statusLabel": "Manuten\xE7\xE3o",
-        "produto": "\u2014",
-        "orderId": "\u2014",
-        "inicio": "\u2014",
-        "termino": "\u2014",
-        "ciclo": "\u2014",
-        "ciclosPeriodo": 0,
-        "producaoReal": 0,
-        "diferenca": 0,
-        "pesoTotal": 0,
-        "perdaKg": 0,
-        "metricas": [],
-        "velocidade": 0
-      }
-    ]
-  }
-];
+const INIT_MACHINES = [{ "id": "CAN-01", "name": "EXT 02", "model": "Perfiladeira CAN-500", "status": "running", "operator": "Fabr\xEDcio", "job": { "orderId": "1.292.285", "product": "Canaleta 30X30X2000mm BR SEMI ABERTA. (CX 9035)", "produced": 650, "startTime": "17:00", "estimatedEnd": "05:00", "cycleTime": 46, "piecesPerCycle": 1, "pieceWeight": 0.42 }, "metrics": { "temperature": 58, "speed": 15.8, "tempZones": [{ "name": "Zona 1", "value": 170 }, { "name": "Zona 2", "value": 173 }, { "name": "Zona 3", "value": 172 }, { "name": "Zona 4", "value": 170 }, { "name": "Zona 5", "value": 160 }, { "name": "Cabe\xE7ote 1", "value": 175 }, { "name": "Cabe\xE7ote 2", "value": 180 }, { "name": "Cabe\xE7ote 4", "value": 160 }] }, "maintenanceNote": "", "history": [{ "date": "01/06/2026, 20:10", "turno": "A", "_name": "EXT 02", "maquina": "EXT 02", "operador": "Luis", "statusLabel": "Em opera\xE7\xE3o", "produto": "Canaleta 30X30X2000mm BR SEMI ABERTA", "orderId": "1.292.285", "inicio": "05:00", "termino": "17:00", "ciclo": 46, "ciclosPeriodo": 939, "producaoReal": 650, "diferenca": 289, "pesoTotal": 394.38, "perdaKg": 121.38, "metricas": [{ "name": "Zona 1", "value": 170 }, { "name": "Zona 2", "value": 173 }, { "name": "Zona 3", "value": 172 }, { "name": "Zona 4", "value": 170 }, { "name": "Zona 5", "value": 160 }, { "name": "Cabe\xE7ote 1", "value": 175 }, { "name": "Cabe\xE7ote 2", "value": 180 }, { "name": "Cabe\xE7ote 4", "value": 160 }], "velocidade": 15.8 }] }, { "id": "CAN-02", "name": "EXT 04", "model": "Perfiladeira CAN-500", "status": "running", "operator": "Leandro", "job": { "orderId": "OP-2024-1002", "product": "Canaleta 20X10X2000mm C/DIVIS\xD3RIA C/ FITA DF", "produced": 3599, "startTime": "17:00", "estimatedEnd": "05:00", "cycleTime": 25, "piecesPerCycle": 1, "pieceWeight": 0.13 }, "metrics": { "temperature": 61, "speed": 34.3, "tempZones": [{ "name": "Zona 1", "value": 170 }, { "name": "Zona 2", "value": 172.2 }, { "name": "Zona 3", "value": 177 }, { "name": "Zona 4", "value": 160 }, { "name": "Zona 5", "value": 169 }, { "name": "Zona 6", "value": 180 }, { "name": "Zona 7", "value": 191 }] }, "maintenanceNote": "", "history": [{ "date": "01/06/2026, 20:35", "turno": "A", "_name": "EXT 04", "maquina": "EXT 04", "operador": "Cleiton", "statusLabel": "Em opera\xE7\xE3o", "produto": "Canaleta 20X10X2000mm C/DIVIS\xD3RIA C/ FITA DF", "orderId": "OP-2024-1002", "inicio": "05:00", "termino": "17:00", "ciclo": 25, "ciclosPeriodo": 1728, "producaoReal": 1300, "diferenca": 428, "pesoTotal": 224.64, "perdaKg": 55.64, "metricas": [{ "name": "Zona 1", "value": 170 }, { "name": "Zona 2", "value": 172.2 }, { "name": "Zona 3", "value": 177 }, { "name": "Zona 4", "value": 160 }, { "name": "Zona 5", "value": 169 }, { "name": "Zona 6", "value": 180 }, { "name": "Zona 7", "value": 191 }], "velocidade": 34.3 }] }, { "id": "CAN-03", "name": "EXT 08", "model": "Perfiladeira CAN-800", "status": "running", "operator": "Felipe", "job": { "orderId": "OP-2024-1003", "product": "Canaleta 20X10X2000mm C/ DF", "produced": 512, "startTime": "17:00", "estimatedEnd": "05:00", "cycleTime": 23, "piecesPerCycle": 2, "pieceWeight": 0.13 }, "metrics": { "temperature": 55, "speed": 52118454, "tempZones": [{ "name": "Cabe\xE7ote Zona 1", "value": 165 }, { "name": "Cabe\xE7ote Zona 2", "value": 227 }, { "name": "Cabe\xE7ote Zona 3", "value": 182 }, { "name": "Cabe\xE7ote Zona 4", "value": 182 }, { "name": "Canh\xE3o Zona 1", "value": 180 }, { "name": "Canh\xE3o Zona 2", "value": 182 }, { "name": "Canh\xE3o Zona 3", "value": 185.1 }, { "name": "Canh\xE3o Zona 4", "value": 185 }] }, "maintenanceNote": "", "history": [] }, { "id": "CAN-04", "name": "EXT 09", "model": "Perfiladeira CAN-500", "status": "maintenance", "operator": "Equipe Manuten\xE7\xE3o", "job": null, "metrics": { "temperature": 30, "speed": 0, "tempZones": [] }, "maintenanceNote": "DESMONTADA", "history": [] }, { "id": "CAN-05", "name": "EXT 07", "model": "Perfiladeira CAN-800", "status": "maintenance", "operator": "Equipe Manuten\xE7\xE3o", "job": null, "metrics": { "temperature": 30, "speed": 0, "tempZones": [] }, "maintenanceNote": "DESMONTADA", "history": [] }, { "id": "CAN-06", "name": "EXT 05", "model": "Perfiladeira CAN-500", "status": "idle", "operator": "\u2014", "job": null, "metrics": { "temperature": 32, "speed": 0, "tempZones": [] }, "maintenanceNote": "SEM PRODU\xC7\xC3O", "history": [{ "date": "01/06/2026, 20:37", "turno": "B", "_name": "Canaleta #6", "maquina": "Canaleta #6", "operador": "\u2014", "statusLabel": "Manuten\xE7\xE3o", "produto": "\u2014", "orderId": "\u2014", "inicio": "\u2014", "termino": "\u2014", "ciclo": "\u2014", "ciclosPeriodo": 0, "producaoReal": 0, "diferenca": 0, "pesoTotal": 0, "perdaKg": 0, "metricas": [], "velocidade": 0 }] }];
 function Bar({ value, max, color }) {
   const pct = Math.min(100, Math.round(value / (max || 1) * 100));
   return /* @__PURE__ */ React.createElement("div", { style: { width: "100%", background: "#1a1f2e", borderRadius: 4, height: 7 } }, /* @__PURE__ */ React.createElement("div", { style: { width: pct + "%", height: "100%", background: color, borderRadius: 4, boxShadow: "0 0 8px " + color + "66", transition: "width .5s" } }));
@@ -1285,7 +980,7 @@ function TabShell({
             display: tab === i ? "block" : "none"
           }
         },
-        ((_a = VISIBLE_TABS[i]) == null ? void 0 : _a.idx) === 0 && /* @__PURE__ */ React.createElement(ProductionDashboard, { session, onGoPanel: () => setTab(toVisible(2)), onLogout, onSettings, hideHeader: true }),
+        ((_a = VISIBLE_TABS[i]) == null ? void 0 : _a.idx) === 0 && /* @__PURE__ */ React.createElement(ProductionDashboard, { session, machines, onGoPanel: () => setTab(toVisible(2)), onLogout, onSettings, hideHeader: true }),
         ((_b = VISIBLE_TABS[i]) == null ? void 0 : _b.idx) === 1 && /* @__PURE__ */ React.createElement(ProductionHistoryTab, { machines, onOpenMachineHistory: canDo(session, "open_history") ? onOpenMachineHistory : null, session }),
         ((_c = VISIBLE_TABS[i]) == null ? void 0 : _c.idx) === 2 && /* @__PURE__ */ React.createElement(
           MainScreen,
@@ -1601,25 +1296,7 @@ function App() {
     });
   }, []);
   useEffect(() => {
-    if (machines !== null) {
-      persistSave(machines);
-    }
-  }, [machines]);
-  useEffect(() => {
-    function save() {
-      if (machines !== null) {
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(machines));
-        } catch (e) {
-        }
-      }
-    }
-    window.addEventListener("beforeunload", save);
-    window.addEventListener("pagehide", save);
-    return () => {
-      window.removeEventListener("beforeunload", save);
-      window.removeEventListener("pagehide", save);
-    };
+    if (machines !== null) persistSave(machines);
   }, [machines]);
   function handleLogin(user, remember) {
     setSession(user);
