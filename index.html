@@ -1,0 +1,1911 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>CANALETA</title>
+  <meta name="theme-color" content="#070b12"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+    body{background:#070b12;font-family:monospace;overflow:hidden;}
+    #root{height:100vh;height:100dvh;}
+    input,textarea,select{font-family:monospace;}
+    ::-webkit-scrollbar{width:3px;}
+    ::-webkit-scrollbar-track{background:#070b12;}
+    ::-webkit-scrollbar-thumb{background:#1e2636;border-radius:3px;}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ── CORES ─────────────────────────────────────────────────────
+const BG="#070b12",CARD="#0d1117",BORDER="#1e2636",TEXT="#e0e8ff",DIM="#4a5a7a";
+const BLUE="#4a8aff",PURPLE="#c47aff",GREEN="#00e5a0",RED="#ff4d6d",GOLD="#f5a623";
+const ST={
+  running:    {color:GREEN, bg:"#00e5a018",label:"Em operação", labelUp:"EM OPERAÇÃO"},
+  idle:       {color:GOLD,  bg:"#f5a62318",label:"Aguardando",  labelUp:"AGUARDANDO"},
+  maintenance:{color:RED,   bg:"#ff4d6d18",label:"Manutenção",  labelUp:"MANUTENÇÃO"},
+};
+function pad(n){return String(n).padStart(2,"0");}
+function fmt(n){return Number(n).toLocaleString("pt-BR");}
+function toKey(y,m,d){return y+"-"+String(m+1).padStart(2,"0")+"-"+String(d).padStart(2,"0");}
+function getDiaTurno(){
+  const now=new Date();
+  if(now.getHours()<5){const d=new Date(now);d.setDate(d.getDate()-1);return d;}
+  return now;
+}
+
+// ── RELÓGIO ───────────────────────────────────────────────────
+function LiveClock(){
+  const[now,setNow]=useState(new Date());
+  useEffect(()=>{const t=setInterval(()=>setNow(new Date()),1000);return()=>clearInterval(t);},[]);
+  return (
+    <div style={{textAlign:"right"}}>
+      <div style={{fontSize:22,fontWeight:900,color:TEXT,fontFamily:"monospace",lineHeight:1}}>
+        {pad(now.getHours())}:{pad(now.getMinutes())}
+        <span style={{fontSize:13,color:DIM}}>:{pad(now.getSeconds())}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── HEADER ────────────────────────────────────────────────────
+function Header({sub,onLogout}){
+  return (
+    <div style={{background:BG,borderBottom:"1px solid #1a2235",padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+      <div>
+        <div style={{fontSize:20,fontWeight:900,color:TEXT,lineHeight:1,fontFamily:"monospace"}}>CANALETA</div>
+        <div style={{fontSize:10,color:DIM,marginTop:1}}>{sub}</div>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <LiveClock/>
+        <button onClick={onLogout} style={{background:"transparent",border:"none",color:DIM,cursor:"pointer",fontSize:10,fontFamily:"monospace"}}>sair</button>
+      </div>
+    </div>
+  );
+}
+
+// ── TAB BAR ───────────────────────────────────────────────────
+const TABS=[{label:"📋 Resumo"},{label:"⚙ Canaleta"},{label:"📊 Produção"},{label:"📋 Histórico"}];
+function TabBar({tab,setTab}){
+  return (
+    <div style={{background:BG,borderTop:"1px solid #1a2235",padding:"10px 0 14px",display:"flex",alignItems:"center",justifyContent:"center",gap:20,flexShrink:0}}>
+      <button onClick={()=>setTab(t=>Math.max(0,t-1))} style={{background:"transparent",border:"none",color:tab>0?BLUE:"#1a2235",cursor:tab>0?"pointer":"default",fontSize:22,lineHeight:1,padding:"0 8px"}}>‹</button>
+      <div style={{display:"flex",gap:10,alignItems:"center"}}>
+        {TABS.map((t,i)=>(
+          <div key={i} onClick={()=>setTab(i)} style={{cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+            <div style={{width:i===tab?22:8,height:8,borderRadius:4,background:i===tab?BLUE:"#2a3450",transition:"all .25s"}}/>
+            {i===tab&&<div style={{fontSize:8,color:BLUE,letterSpacing:".06em",opacity:0.8}}>{t.label}</div>}
+          </div>
+        ))}
+      </div>
+      <button onClick={()=>setTab(t=>Math.min(TABS.length-1,t+1))} style={{background:"transparent",border:"none",color:tab<TABS.length-1?BLUE:"#1a2235",cursor:tab<TABS.length-1?"pointer":"default",fontSize:22,lineHeight:1,padding:"0 8px"}}>›</button>
+    </div>
+  );
+}
+
+// ── MODAL CALENDÁRIO ──────────────────────────────────────────
+function ModalCalendario({diaAtivo,onSelect,onClose}){
+  const hoje=new Date();
+  const[ano,setAno]=useState(hoje.getFullYear());
+  const[mes,setMes]=useState(hoje.getMonth());
+  const SEMANA=["D","S","T","Q","Q","S","S"];
+  const primeiroDia=new Date(ano,mes,1).getDay();
+  const totalDias=new Date(ano,mes+1,0).getDate();
+  const nomeMes=new Date(ano,mes,1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+  function prevMes(){if(mes===0){setMes(11);setAno(a=>a-1);}else setMes(m=>m-1);}
+  function nextMes(){if(new Date(ano,mes+1,1)<=hoje){if(mes===11){setMes(0);setAno(a=>a+1);}else setMes(m=>m+1);}}
+  const cells=[];
+  for(let i=0;i<primeiroDia;i++)cells.push(null);
+  for(let d=1;d<=totalDias;d++)cells.push(d);
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"#0d1525",border:"1px solid #2a3450",borderRadius:16,padding:20,width:"100%",maxWidth:340}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <button onClick={prevMes} style={{background:"#1a2636",border:"1px solid #2a3450",color:BLUE,borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:16,fontFamily:"monospace"}}>‹</button>
+          <div style={{fontSize:13,fontWeight:700,color:TEXT,textTransform:"capitalize"}}>{nomeMes}</div>
+          <button onClick={nextMes} style={{background:"#1a2636",border:"1px solid #2a3450",color:new Date(ano,mes+1,1)<=hoje?BLUE:"#1a2636",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:16,fontFamily:"monospace"}}>›</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:6}}>
+          {SEMANA.map((d,i)=><div key={i} style={{textAlign:"center",fontSize:10,color:DIM}}>{d}</div>)}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4}}>
+          {cells.map((d,i)=>{
+            if(!d)return <div key={i}/>;
+            const dFmt=pad(d)+"/"+pad(mes+1)+"/"+ano;
+            const isAtivo=diaAtivo===dFmt||diaAtivo===toKey(ano,mes,d);
+            const isHoje=d===hoje.getDate()&&mes===hoje.getMonth()&&ano===hoje.getFullYear();
+            const isFuturo=new Date(ano,mes,d)>hoje;
+            return (
+              <div key={i} onClick={()=>{if(!isFuturo){onSelect(dFmt);onClose();}}}
+                style={{textAlign:"center",borderRadius:8,padding:"8px 0",fontSize:13,
+                  fontWeight:isAtivo?900:400,cursor:isFuturo?"default":"pointer",
+                  background:isAtivo?BLUE:isHoje?"#1a3a6a":"transparent",
+                  color:isAtivo?"#fff":isFuturo?"#2a3a4a":TEXT,
+                  border:isHoje&&!isAtivo?"1px solid "+BLUE+"55":"1px solid transparent"}}>
+                {d}
+              </div>
+            );
+          })}
+        </div>
+        <button onClick={onClose} style={{display:"block",width:"100%",marginTop:16,background:"#1e2636",border:"1px solid #2a3450",color:DIM,borderRadius:10,padding:"12px 0",cursor:"pointer",fontSize:13,fontFamily:"monospace"}}>Fechar</button>
+      </div>
+    </div>
+  );
+}
+
+
+const BG="#070b12",CARD="#0d1117",BORDER="#1e2636",TEXT="#e0e8ff",DIM="#4a5a7a";
+const BLUE="#4a8aff",GREEN="#00e5a0",RED="#ff4d6d";
+
+const USUARIOS = [
+  { user:"admin",       pass:"1234", role:"admin",       nome:"Administrador" },
+  { user:"encarregado", pass:"5678", role:"encarregado", nome:"Encarregado"   },
+  { user:"operador",    pass:"0000", role:"operador",     nome:"Operador"      },
+];
+
+function TelaLogin({ onLogin, onImport, onExport }) {
+  const [user, setUser]       = useState("");
+  const [pass, setPass]       = useState("");
+  const [showPass, setShowPass] = useState(false);
+  const [lembrar, setLembrar]  = useState(false);
+  const [erro, setErro]       = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // Carregar dados salvos
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("canaleta_login") || "null");
+      if (saved) { setUser(saved.user); setPass(saved.pass); setLembrar(true); }
+    } catch {}
+  }, []);
+
+  function doLogin() {
+    setErro("");
+    setLoading(true);
+    setTimeout(() => {
+      const found = USUARIOS.find(u => u.user === user.trim().toLowerCase() && u.pass === pass);
+      if (found) {
+        if (lembrar) {
+          localStorage.setItem("canaleta_login", JSON.stringify({ user: user.trim().toLowerCase(), pass }));
+        } else {
+          localStorage.removeItem("canaleta_login");
+        }
+        onLogin(found);
+      } else {
+        setErro("Usuário ou senha incorretos.");
+        setLoading(false);
+      }
+    }, 600);
+  }
+
+  function handleImport() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        try {
+          const data = JSON.parse(ev.target.result);
+          onImport(data);
+          setErro("");
+        } catch {
+          setErro("Arquivo inválido.");
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }
+
+  return (
+    <div style={{ minHeight:"100vh", background:BG, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:24, fontFamily:"monospace" }}>
+
+      {/* Logo */}
+      <div style={{ marginBottom:40, textAlign:"center" }}>
+        <div style={{ fontSize:42, fontWeight:900, color:TEXT, letterSpacing:4, textShadow:"0 0 40px #4a8aff44" }}>CANALETA</div>
+        <div style={{ fontSize:11, color:DIM, letterSpacing:3, marginTop:6, textTransform:"uppercase" }}>Monitoramento Industrial</div>
+        <div style={{ width:60, height:2, background:"linear-gradient(90deg,transparent,"+BLUE+",transparent)", margin:"12px auto 0" }}/>
+      </div>
+
+      {/* Card */}
+      <div style={{ width:"100%", maxWidth:340, background:CARD, border:"1px solid "+BORDER, borderRadius:16, padding:24 }}>
+
+        {/* Usuário */}
+        <div style={{ marginBottom:14 }}>
+          <div style={{ fontSize:9, color:DIM, textTransform:"uppercase", letterSpacing:2, marginBottom:6 }}>Usuário</div>
+          <input value={user} onChange={e=>setUser(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doLogin()}
+            placeholder="admin / encarregado / operador" autoCapitalize="none"
+            style={{ width:"100%", background:"#0a0f1e", border:"1px solid "+BORDER, borderRadius:10, padding:"12px 14px", color:TEXT, fontSize:14, fontFamily:"monospace", outline:"none", boxSizing:"border-box" }}/>
+        </div>
+
+        {/* Senha */}
+        <div style={{ marginBottom:14 }}>
+          <div style={{ fontSize:9, color:DIM, textTransform:"uppercase", letterSpacing:2, marginBottom:6 }}>Senha</div>
+          <div style={{ position:"relative" }}>
+            <input type={showPass?"text":"password"} value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doLogin()}
+              placeholder="••••"
+              style={{ width:"100%", background:"#0a0f1e", border:"1px solid "+BORDER, borderRadius:10, padding:"12px 80px 12px 14px", color:TEXT, fontSize:14, fontFamily:"monospace", outline:"none", boxSizing:"border-box" }}/>
+            <button onClick={()=>setShowPass(s=>!s)}
+              style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:DIM, cursor:"pointer", fontSize:11, fontFamily:"monospace", letterSpacing:0 }}>
+              {showPass?"ocultar":"mostrar"}
+            </button>
+          </div>
+        </div>
+
+        {/* Lembrar acesso */}
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:20, cursor:"pointer" }} onClick={()=>setLembrar(l=>!l)}>
+          <div style={{ width:18, height:18, border:"1px solid "+(lembrar?BLUE:BORDER), borderRadius:4, background:lembrar?"#1a3a6a":"#0a0f1e", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+            {lembrar && <div style={{ width:10, height:10, background:BLUE, borderRadius:2 }}/>}
+          </div>
+          <span style={{ fontSize:12, color:DIM }}>Lembrar acesso</span>
+        </div>
+
+        {/* Erro */}
+        {erro && <div style={{ background:"#1a0a0a", border:"1px solid "+RED+"44", borderRadius:8, padding:"8px 12px", color:RED, fontSize:12, marginBottom:14 }}>{erro}</div>}
+
+        {/* Entrar */}
+        <button onClick={doLogin} disabled={loading}
+          style={{ display:"block", width:"100%", background:loading?"#1a2636":"linear-gradient(135deg,#1a3a8a,#2a5acc)", border:"2px solid "+BLUE+"44", borderRadius:12, padding:"14px 0", color:TEXT, fontWeight:900, fontSize:14, fontFamily:"monospace", letterSpacing:2, cursor:loading?"default":"pointer", marginBottom:16 }}>
+          {loading?"Verificando...":"ENTRAR"}
+        </button>
+
+        {/* Separador */}
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+          <div style={{ flex:1, height:1, background:BORDER }}/>
+          <span style={{ fontSize:10, color:DIM }}>dados</span>
+          <div style={{ flex:1, height:1, background:BORDER }}/>
+        </div>
+
+        {/* Importar / Exportar */}
+        <div style={{ display:"flex", gap:10 }}>
+          <button onClick={handleImport}
+            style={{ flex:1, background:"transparent", border:"1px solid "+BORDER, borderRadius:10, padding:"11px 0", color:DIM, fontSize:11, fontFamily:"monospace", cursor:"pointer" }}>
+            Importar
+          </button>
+          <button onClick={onExport}
+            style={{ flex:1, background:"transparent", border:"1px solid "+BORDER, borderRadius:10, padding:"11px 0", color:DIM, fontSize:11, fontFamily:"monospace", cursor:"pointer" }}>
+            Exportar
+          </button>
+        </div>
+      </div>
+
+      <div style={{ marginTop:24, fontSize:10, color:DIM, opacity:0.5 }}>v2.0 · ILUMI Indústria</div>
+    </div>
+  );
+}
+
+
+
+const BG = "#070b12";
+const CARD = "#0d1117";
+const BORDER = "#1e2636";
+const TEXT = "#e0e8ff";
+const DIM = "#4a5a7a";
+const BLUE = "#4a8aff";
+const PURPLE = "#c47aff";
+const GREEN = "#00e5a0";
+
+function fmt(n) { return Number(n).toLocaleString("pt-BR"); }
+
+function toKey(y, m, d) {
+  return `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+}
+
+const HISTORICO_INICIAL = {
+  "2026-06-11": [
+    { name: "EXT 02", product: "Canaleta 50X50X2000mm BR SEMI ABERTA. (CX 9035)", prodA: 688,  prodB: 580  },
+    { name: "EXT 04", product: "Canaleta 20X10X2000mm C/DIVISÓRIA C/ FITA DF",    prodA: 3300, prodB: 2800 },
+    { name: "EXT 08", product: "Canaleta 20X10X2000mm C/ DF",                      prodA: 3500, prodB: 3000 },
+  ],
+  "2026-06-10": [
+    { name: "EXT 02", product: "Canaleta 50X50X2000mm BR SEMI ABERTA. (CX 9035)", prodA: 650,  prodB: 600  },
+    { name: "EXT 04", product: "Canaleta 20X10X2000mm C/DIVISÓRIA C/ FITA DF",    prodA: 3100, prodB: 2600 },
+    { name: "EXT 08", product: "Canaleta 20X10X2000mm C/ DF",                      prodA: 3200, prodB: 2900 },
+  ],
+  "2026-06-09": [
+    { name: "EXT 02", product: "Canaleta 50X50X2000mm BR SEMI ABERTA. (CX 9035)", prodA: 700,  prodB: 620  },
+    { name: "EXT 04", product: "Canaleta 20X10X2000mm C/DIVISÓRIA C/ FITA DF",    prodA: 3400, prodB: 2700 },
+    { name: "EXT 08", product: "Canaleta 20X10X2000mm C/ DF",                      prodA: 3300, prodB: 2800 },
+  ],
+};
+
+// ── Modal Calendário ──────────────────────────────────────────
+function ModalCalendario({ diaAtivo, onSelect, onClose }) {
+  const hoje = new Date();
+  const [ano, setAno] = useState(hoje.getFullYear());
+  const [mes, setMes] = useState(hoje.getMonth());
+  const SEMANA = ["D","S","T","Q","Q","S","S"];
+  const primeiroDia = new Date(ano, mes, 1).getDay();
+  const totalDias   = new Date(ano, mes + 1, 0).getDate();
+  const nomeMes = new Date(ano, mes, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+
+  function prevMes() { if (mes === 0) { setMes(11); setAno(a => a-1); } else setMes(m => m-1); }
+  function nextMes() {
+    const n = new Date(ano, mes+1, 1);
+    if (n <= hoje) { if (mes === 11) { setMes(0); setAno(a => a+1); } else setMes(m => m+1); }
+  }
+  const podeProseguir = new Date(ano, mes+1, 1) <= hoje;
+
+  const cells = [];
+  for (let i = 0; i < primeiroDia; i++) cells.push(null);
+  for (let d = 1; d <= totalDias; d++) cells.push(d);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000c", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "#0d1525", border: "1px solid #2a3450", borderRadius: 16, padding: 20, width: "100%", maxWidth: 340 }}>
+        {/* Cabeçalho */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <button onClick={prevMes} style={{ background: "#1a2636", border: "1px solid #2a3450", color: BLUE, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 16, fontFamily: "monospace" }}>‹</button>
+          <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, textTransform: "capitalize" }}>{nomeMes}</div>
+          <button onClick={nextMes} style={{ background: "#1a2636", border: "1px solid #2a3450", color: podeProseguir ? BLUE : "#1a2636", borderRadius: 8, padding: "6px 14px", cursor: podeProseguir ? "pointer" : "default", fontSize: 16, fontFamily: "monospace" }}>›</button>
+        </div>
+        {/* Dias da semana */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 6 }}>
+          {SEMANA.map((d, i) => (
+            <div key={i} style={{ textAlign: "center", fontSize: 10, color: DIM }}>{d}</div>
+          ))}
+        </div>
+        {/* Dias */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+          {cells.map((d, i) => {
+            if (!d) return <div key={i} />;
+            const key = toKey(ano, mes, d);
+            const temDados = !!HISTORICO_INICIAL[key];
+            const isAtivo = diaAtivo === key;
+            const isHoje = d === hoje.getDate() && mes === hoje.getMonth() && ano === hoje.getFullYear();
+            const isFuturo = new Date(ano, mes, d) > hoje;
+            return (
+              <div key={i} onClick={() => { if (!isFuturo) { onSelect(key); onClose(); } }}
+                style={{
+                  textAlign: "center", borderRadius: 8, padding: "8px 0", fontSize: 13,
+                  fontWeight: isAtivo ? 900 : 400,
+                  cursor: isFuturo ? "default" : "pointer",
+                  background: isAtivo ? BLUE : isHoje ? "#1a3a6a" : "transparent",
+                  color: isAtivo ? "#fff" : isFuturo ? "#2a3a4a" : temDados ? TEXT : DIM,
+                  border: isHoje && !isAtivo ? "1px solid " + BLUE + "55" : "1px solid transparent",
+                  position: "relative",
+                }}>
+                {d}
+                {temDados && !isAtivo && (
+                  <div style={{ position: "absolute", bottom: 2, left: "50%", transform: "translateX(-50%)", width: 4, height: 4, borderRadius: "50%", background: GREEN }} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {/* Fechar */}
+        <button onClick={onClose} style={{ display: "block", width: "100%", marginTop: 16, background: "#1e2636", border: "1px solid #2a3450", color: DIM, borderRadius: 10, padding: "12px 0", cursor: "pointer", fontSize: 13, fontFamily: "monospace" }}>
+          Fechar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Modal Editar ──────────────────────────────────────────────
+function ModalEditar({ m, filtro, onClose, onSalvar }) {
+  const cor = filtro === "A" ? BLUE : PURPLE;
+  const [val, setVal] = useState(String(filtro === "A" ? m.prodA : m.prodB));
+  function salvar() {
+    onSalvar(parseInt(val) || 0);
+  }
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000d", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "#0d1525", border: "1px solid " + cor + "44", borderRadius: 16, padding: 24, width: "100%", maxWidth: 320 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, marginBottom: 4 }}>{m.name}</div>
+        <div style={{ fontSize: 11, color: DIM, marginBottom: 16 }}>Turno {filtro} — editar produção</div>
+        <input type="tel" inputMode="numeric" value={val} autoFocus
+          onChange={e => setVal(e.target.value.replace(/\D/g, ""))}
+          onKeyDown={e => { if (e.key === "Enter") salvar(); if (e.key === "Escape") onClose(); }}
+          style={{ width: "100%", background: "#0a1628", border: "2px solid " + cor, color: TEXT, borderRadius: 10, padding: "12px 16px", fontSize: 28, fontWeight: 900, fontFamily: "monospace", textAlign: "right", outline: "none", boxSizing: "border-box", marginBottom: 16 }}
+        />
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={salvar} style={{ flex: 1, background: GREEN, border: "none", color: "#000", borderRadius: 10, padding: "14px 0", cursor: "pointer", fontSize: 14, fontWeight: 900, fontFamily: "monospace" }}>✓ Salvar</button>
+          <button onClick={onClose} style={{ flex: 1, background: "#1e2636", border: "1px solid " + BORDER, color: DIM, borderRadius: 10, padding: "14px 0", cursor: "pointer", fontSize: 14, fontFamily: "monospace" }}>✕ Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Aba Resumo ────────────────────────────────────────────────
+function AbaResumo() {
+  const hoje = new Date();
+  const hojeKey = toKey(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+  const [filtro, setFiltro] = useState("A");
+  const [diaAtivo, setDiaAtivo] = useState(hojeKey);
+  const [editando, setEditando] = useState(null);
+  const [calAberto, setCalAberto] = useState(false);
+  const [historico, setHistorico] = useState(HISTORICO_INICIAL);
+
+  const corMap = { A: BLUE, B: PURPLE, AB: TEXT };
+  const bgMap  = { A: "#4a8aff18", B: "#c47aff18", AB: "#ffffff08" };
+  const lblMap = { A: "Turno A", B: "Turno B", AB: "Turno A + Turno B" };
+  const cor = corMap[filtro];
+
+  const maquinas = historico[diaAtivo] || [];
+  const totalA = maquinas.reduce((s, m) => s + m.prodA, 0);
+  const totalB = maquinas.reduce((s, m) => s + m.prodB, 0);
+  const diaFormatado = new Date(diaAtivo + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto", background: BG, fontFamily: "monospace" }}>
+      {calAberto && <ModalCalendario diaAtivo={diaAtivo} onSelect={setDiaAtivo} onClose={() => setCalAberto(false)} />}
+      {editando && (
+        <ModalEditar
+          m={editando.m}
+          filtro={editando.filtro}
+          onClose={() => setEditando(null)}
+          onSalvar={(novoVal) => {
+            setHistorico(h => {
+              const dia = h[diaAtivo] || [];
+              return {
+                ...h,
+                [diaAtivo]: dia.map(m =>
+                  m.name === editando.m.name
+                    ? { ...m, [editando.filtro === "A" ? "prodA" : "prodB"]: novoVal }
+                    : m
+                )
+              };
+            });
+            setEditando(null);
+          }}
+        />
+      )}
+
+      {/* Header */}
+      <div style={{ background: bgMap[filtro], borderBottom: "2px solid " + cor + "44", padding: "16px 20px 14px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <div style={{ fontSize: 10, color: cor, textTransform: "uppercase", letterSpacing: ".15em", marginBottom: 4 }}>◆ RESUMO DO TURNO</div>
+            <div style={{ fontSize: 26, fontWeight: 900, color: cor }}>{lblMap[filtro]}</div>
+            <div style={{ fontSize: 11, color: cor, opacity: 0.8, marginTop: 2 }}>{diaFormatado}</div>
+            <div style={{ fontSize: 11, color: "#5a7a9a", marginTop: 6 }}>Encarregado: <strong style={{ color: TEXT }}>Administrador</strong></div>
+          </div>
+          {/* Botões A / B / A+B */}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0, marginTop: 4 }}>
+            <div style={{ display: "flex", background: "#0a0f1e", border: "1px solid " + BORDER, borderRadius: 10, overflow: "hidden" }}>
+              {[["A","Turno A"],["B","Turno B"],["AB","A+B"]].map(([k, l]) => (
+                <button key={k} onClick={() => setFiltro(k)} style={{
+                  padding: "8px 10px", border: "none", cursor: "pointer", fontSize: 10,
+                  fontFamily: "monospace", fontWeight: filtro === k ? 700 : 400,
+                  borderRight: k !== "AB" ? "1px solid " + BORDER : "none",
+                  background: filtro===k ? (k==="A"?"#4a8aff22":k==="B"?"#c47aff22":"#ffffff12") : "transparent",
+                  color: filtro===k ? corMap[k] : DIM,
+                }}>{l}</button>
+              ))}
+            </div>
+            {/* 📅 embaixo dos botões, alinhado à direita */}
+            <button onClick={() => setCalAberto(true)}
+              style={{ background: "#0a0f1e", border: "1px solid #2a3450", borderRadius: 10, padding: "6px 12px", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>
+              📅
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Conteúdo */}
+      <div style={{ padding: "16px 16px 80px" }}>
+        <div style={{ fontSize: 10, color: "#3a5a7a", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 14 }}>
+          {filtro === "AB" ? "COMPARATIVO DO DIA" : "PRODUÇÃO DO TURNO"} · {maquinas.length} MÁQUINAS
+        </div>
+
+        {maquinas.length === 0 && (
+          <div style={{ textAlign: "center", padding: "40px 0", color: DIM, fontSize: 13 }}>
+            Nenhum registro para este dia.
+          </div>
+        )}
+
+        {filtro === "AB" ? (
+          <>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 10, color: BLUE, fontWeight: 700, width: 70, textAlign: "center" }}>Turno A</span>
+              <span style={{ fontSize: 10, color: PURPLE, fontWeight: 700, width: 70, textAlign: "center" }}>Turno B</span>
+            </div>
+            {maquinas.map(m => (
+              <div key={m.name} style={{ background: CARD, border: "1px solid " + BORDER, borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{m.name}</div>
+                    <div style={{ fontSize: 10, color: DIM, marginTop: 2 }}>{m.product}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={() => setEditando({ m, filtro: "A" })} style={{ background: "#1a2636", border: "1px solid " + BLUE + "66", color: BLUE, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 10, fontFamily: "monospace" }}>✏ A</button>
+                    <button onClick={() => setEditando({ m, filtro: "B" })} style={{ background: "#1a2636", border: "1px solid " + PURPLE + "66", color: PURPLE, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 10, fontFamily: "monospace" }}>✏ B</button>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+                  <div style={{ flex: 1, textAlign: "center" }}>
+                    <div style={{ fontSize: 22, fontWeight: 900, color: BLUE }}>{fmt(m.prodA)}</div>
+                    <div style={{ background: "#1a1f2e", borderRadius: 3, height: 4, marginTop: 4 }}>
+                      <div style={{ width: (m.prodA+m.prodB>0 ? Math.round(m.prodA/(m.prodA+m.prodB)*100) : 50)+"%", height: "100%", background: BLUE, borderRadius: 3 }} />
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 10, color: "#2a3a4a" }}>vs</div>
+                  <div style={{ flex: 1, textAlign: "center" }}>
+                    <div style={{ fontSize: 22, fontWeight: 900, color: PURPLE }}>{fmt(m.prodB)}</div>
+                    <div style={{ background: "#1a1f2e", borderRadius: 3, height: 4, marginTop: 4 }}>
+                      <div style={{ width: (m.prodA+m.prodB>0 ? Math.round(m.prodB/(m.prodA+m.prodB)*100) : 50)+"%", height: "100%", background: PURPLE, borderRadius: 3 }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {maquinas.length > 0 && (
+              <div style={{ background: "#111622", border: "1px solid #2a3450", borderRadius: 12, padding: 14, marginTop: 4 }}>
+                <div style={{ fontSize: 10, color: DIM, textTransform: "uppercase", marginBottom: 10 }}>TOTAL GERAL DO DIA</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {[["Turno A", BLUE, totalA],["Turno B", PURPLE, totalB]].map(([l,c,v]) => (
+                    <div key={l} style={{ flex: 1, background: CARD, borderRadius: 8, padding: 10, textAlign: "center", border: "1px solid "+c+"33" }}>
+                      <div style={{ fontSize: 10, color: c, fontWeight: 700, marginBottom: 4 }}>{l}</div>
+                      <div style={{ fontSize: 24, fontWeight: 900, color: c }}>{fmt(v)}</div>
+                      <div style={{ fontSize: 9, color: DIM }}>pçs</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {maquinas.map(m => {
+              const prod = filtro === "A" ? m.prodA : m.prodB;
+              return (
+                <div key={m.name} style={{ background: CARD, border: "1px solid "+cor+"22", borderRadius: 12, padding: 16, marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{m.name}</div>
+                      <div style={{ fontSize: 11, color: DIM, marginTop: 2 }}>{m.product}</div>
+                    </div>
+                    <button onClick={() => setEditando({ m, filtro })}
+                      style={{ background: "#1a2636", border: "1px solid "+cor+"66", color: cor, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 11, fontFamily: "monospace", fontWeight: 700, flexShrink: 0, marginLeft: 8 }}>
+                      ✏ editar
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 6 }}>
+                    <div style={{ fontSize: 36, fontWeight: 900, color: cor, lineHeight: 1 }}>{fmt(prod)}</div>
+                    <div style={{ fontSize: 11, color: DIM }}>pçs</div>
+                  </div>
+                </div>
+              );
+            })}
+            {maquinas.length > 0 && (
+              <div style={{ background: bgMap[filtro], border: "1px solid "+cor+"44", borderRadius: 12, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 12, color: cor, textTransform: "uppercase", fontWeight: 700 }}>TOTAL GERAL</span>
+                <span style={{ fontSize: 28, fontWeight: 900, color: cor }}>
+                  {fmt(filtro==="A"?totalA:totalB)} <span style={{ fontSize: 13, fontWeight: 400 }}>pçs</span>
+                </span>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+
+const BG = "#070b12";
+const CARD = "#0d1117";
+const BORDER = "#1e2636";
+const TEXT = "#e0e8ff";
+const DIM = "#4a5a7a";
+const BLUE = "#4a8aff";
+const GREEN = "#00e5a0";
+const RED = "#ff4d6d";
+const GOLD = "#f5a623";
+
+function pad(n) { return String(n).padStart(2,"0"); }
+function fmt(n) { return Number(n).toLocaleString("pt-BR"); }
+
+const ST = {
+  running:     { color: GREEN, bg: "#00e5a018", label: "Em operação",  labelUp: "EM OPERAÇÃO" },
+  idle:        { color: GOLD,  bg: "#f5a62318", label: "Aguardando",   labelUp: "AGUARDANDO" },
+  maintenance: { color: RED,   bg: "#ff4d6d18", label: "Manutenção",   labelUp: "MANUTENÇÃO" },
+};
+
+const MAQUINAS_INICIAL = [
+  { id:"CAN-01", name:"EXT 02", status:"running",     operator:"Fabrício",          product:"Canaleta 50X50X2000mm BR SEMI ABERTA. (CX 9035)", ordem:"1.292.285",   inicio:"19:00", termino:"05:00", ciclo:62,  meta:580,  real:0, peso:0.42, pcsciclo:1, rpm_ext:"", rpm_pux:"", amper:"", obs:"", zonas:[{n:"CABEÇOTE 1",v:"175"},{n:"CABEÇOTE 2",v:"180"},{n:"CABEÇOTE 4",v:"160"},{n:"ZONA 1",v:"170"},{n:"ZONA 2",v:"173"},{n:"ZONA 3",v:"172"},{n:"ZONA 4",v:"170"},{n:"ZONA 5",v:"160"}] },
+  { id:"CAN-02", name:"EXT 04", status:"running",     operator:"Leandro",           product:"Canaleta 20X10X2000mm C/DIVISÓRIA C/ FITA DF",    ordem:"OP-2024-1002", inicio:"17:00", termino:"05:00", ciclo:45, meta:1745, real:0, peso:0.15, pcsciclo:1, rpm_ext:"", rpm_pux:"", amper:"", obs:"", zonas:[{n:"CABEÇOTE 1",v:"170"},{n:"CABEÇOTE 2",v:"175"},{n:"CABEÇOTE 4",v:"165"},{n:"ZONA 1",v:"168"},{n:"ZONA 2",v:"170"},{n:"ZONA 3",v:"169"},{n:"ZONA 4",v:"167"},{n:"ZONA 5",v:"165"}] },
+  { id:"CAN-03", name:"EXT 08", status:"running",     operator:"Felipe",            product:"Canaleta 20X10X2000mm C/ DF",                     ordem:"OP-2024-1003", inicio:"17:00", termino:"05:00", ciclo:48, meta:1878, real:0, peso:0.12, pcsciclo:1, rpm_ext:"", rpm_pux:"", amper:"", obs:"", zonas:[{n:"CABEÇOTE 1",v:"172"},{n:"CABEÇOTE 2",v:"178"},{n:"CABEÇOTE 4",v:"162"},{n:"ZONA 1",v:"171"},{n:"ZONA 2",v:"174"},{n:"ZONA 3",v:"171"},{n:"ZONA 4",v:"169"},{n:"ZONA 5",v:"162"}] },
+  { id:"CAN-06", name:"EXT 05", status:"idle",        operator:"Sem operador",      product:"SEM PRODUÇÃO", ordem:"", inicio:"", termino:"", ciclo:0, meta:0, real:0, peso:0, pcsciclo:1, rpm_ext:"", rpm_pux:"", amper:"", obs:"", zonas:[] },
+  { id:"CAN-04", name:"EXT 09", status:"maintenance", operator:"Equipe Manutenção", product:"DESMONTADA",   ordem:"", inicio:"", termino:"", ciclo:0, meta:0, real:0, peso:0, pcsciclo:1, rpm_ext:"", rpm_pux:"", amper:"", obs:"", zonas:[] },
+  { id:"CAN-05", name:"EXT 07", status:"maintenance", operator:"Equipe Manutenção", product:"DESMONTADA",   ordem:"", inicio:"", termino:"", ciclo:0, meta:0, real:0, peso:0, pcsciclo:1, rpm_ext:"", rpm_pux:"", amper:"", obs:"", zonas:[] },
+];
+
+function calcProgresso(inicio, termino) {
+  if (!inicio || !termino) return 0;
+  try {
+    const now = new Date();
+    const [hi,mi] = inicio.split(":").map(Number);
+    const [ht,mt] = termino.split(":").map(Number);
+    let ini = new Date(now); ini.setHours(hi,mi,0,0);
+    let ter = new Date(now); ter.setHours(ht,mt,0,0);
+    if (ter<=ini) ter.setDate(ter.getDate()+1);
+    const total = ter-ini, dec = now-ini;
+    if (dec<=0) return 0;
+    return Math.min(100, Math.round(dec/total*100));
+  } catch { return 0; }
+}
+
+// Campo editável com autocomplete
+function Campo({ label, value, onChange, unit, type="text", large=false, sugestoes=[] }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const ref = useRef(null);
+  function abrir() { setDraft(value); setEditing(true); setTimeout(()=>ref.current?.focus(),50); }
+  function salvar(v) { onChange(v!==undefined?v:draft); setEditing(false); }
+  const filtradas = sugestoes.filter(s=>s.toLowerCase().includes((draft||"").toLowerCase())&&s!==draft);
+  return (
+    <div style={{ background:BG, border:"1px solid "+BORDER, borderRadius:10, padding:"10px 14px", position:"relative" }}>
+      <div style={{ fontSize:9, color:DIM, textTransform:"uppercase", letterSpacing:".1em", marginBottom:4 }}>{label}</div>
+      {editing ? (
+        <div>
+          <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+            <input ref={ref} type={type==="number"?"tel":"text"} inputMode={type==="number"?"numeric":"text"}
+              value={draft} onChange={e=>setDraft(e.target.value)}
+              onKeyDown={e=>{ if(e.key==="Enter") salvar(); if(e.key==="Escape") setEditing(false); }}
+              style={{ flex:1, background:"#0a1628", border:"2px solid "+BLUE, color:TEXT, borderRadius:8, padding:"6px 10px", fontSize:large?18:14, fontFamily:"monospace", outline:"none", boxSizing:"border-box" }}
+            />
+            <button onMouseDown={e=>{e.preventDefault();salvar();}} style={{ background:GREEN, border:"none", color:"#000", borderRadius:6, padding:"6px 10px", cursor:"pointer", fontWeight:700, fontSize:13 }}>✓</button>
+            <button onMouseDown={e=>{e.preventDefault();setEditing(false);}} style={{ background:"#1e2636", border:"1px solid "+BORDER, color:DIM, borderRadius:6, padding:"6px 10px", cursor:"pointer", fontSize:13 }}>✕</button>
+          </div>
+          {filtradas.length>0 && (
+            <div style={{ position:"absolute", left:0, right:0, top:"100%", background:"#0d1525", border:"1px solid "+BLUE+"44", borderRadius:8, zIndex:100, maxHeight:120, overflowY:"auto" }}>
+              {filtradas.map((s,i)=>(
+                <div key={i} onMouseDown={()=>salvar(s)} style={{ padding:"8px 14px", fontSize:12, color:TEXT, cursor:"pointer", borderBottom:"1px solid "+BORDER }}>{s}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div onClick={abrir} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
+          <div style={{ fontSize:large?20:15, fontWeight:700, color:value?TEXT:DIM }}>
+            {value||"— toque para editar"}{unit&&value?<span style={{ fontSize:11, color:DIM, marginLeft:4 }}>{unit}</span>:null}
+          </div>
+          <span style={{ color:DIM, fontSize:14, marginLeft:8 }}>✏</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Seletor de status
+function SeletorStatus({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const s = ST[value];
+  return (
+    <div style={{ position:"relative", display:"inline-block" }}>
+      <div onClick={()=>setOpen(o=>!o)} style={{ display:"inline-flex", alignItems:"center", gap:6, background:s.bg, border:"1px solid "+s.color+"66", borderRadius:20, padding:"6px 14px", cursor:"pointer" }}>
+        <span style={{ width:6, height:6, borderRadius:"50%", background:s.color, display:"inline-block" }} />
+        <span style={{ fontSize:12, color:s.color, fontWeight:700 }}>{s.label}</span>
+        <span style={{ fontSize:10, color:s.color }}>▾</span>
+      </div>
+      {open && (
+        <div style={{ position:"absolute", top:"110%", left:0, background:"#0d1525", border:"1px solid #2a3450", borderRadius:12, zIndex:200, minWidth:160, overflow:"hidden" }}>
+          {Object.entries(ST).map(([k,v])=>(
+            <div key={k} onClick={()=>{ onChange(k); setOpen(false); }} style={{ padding:"10px 16px", fontSize:12, color:v.color, cursor:"pointer", borderBottom:"1px solid "+BORDER, display:"flex", alignItems:"center", gap:8 }}>
+              <span style={{ width:6, height:6, borderRadius:"50%", background:v.color, display:"inline-block" }} />{v.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Painel de zonas editável — adicionar/editar/remover
+function PainelZonas({ zonas, onChange }) {
+  const [editIdx, setEditIdx] = useState(null);
+  const [draftN, setDraftN] = useState("");
+  const [draftV, setDraftV] = useState("");
+
+  function abrirEdicao(i) {
+    setEditIdx(i);
+    setDraftN(zonas[i].n);
+    setDraftV(zonas[i].v);
+  }
+  function salvarEdicao() {
+    const z = [...zonas];
+    z[editIdx] = { n:draftN, v:draftV };
+    onChange(z);
+    setEditIdx(null);
+  }
+  function removerZona(i) {
+    onChange(zonas.filter((_,idx)=>idx!==i));
+  }
+  function adicionarZona() {
+    onChange([...zonas, { n:"NOVA ZONA", v:"170" }]);
+  }
+  const media = zonas.length>0 ? Math.round(zonas.reduce((s,z)=>s+(parseFloat(z.v)||0),0)/zonas.length) : 0;
+
+  return (
+    <div style={{ background:CARD, border:"1px solid "+BORDER, borderRadius:12, padding:16, marginBottom:12 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+        <div style={{ fontSize:10, color:RED }}>🌡 TEMPERATURA · ZONAS &nbsp;<span style={{ color:GOLD }}>média: {media}°C</span></div>
+        <button onClick={adicionarZona} style={{ background:"#1a2636", border:"1px dashed "+BLUE+"66", color:BLUE, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontSize:10, fontFamily:"monospace" }}>+ zona</button>
+      </div>
+
+      {editIdx !== null && (
+        <div style={{ background:"#0a1628", border:"1px solid "+BLUE, borderRadius:10, padding:14, marginBottom:12 }}>
+          <div style={{ fontSize:10, color:BLUE, marginBottom:10 }}>Editando zona {editIdx+1}</div>
+          <div style={{ marginBottom:8 }}>
+            <div style={{ fontSize:9, color:DIM, marginBottom:4 }}>NOME DA ZONA</div>
+            <input value={draftN} onChange={e=>setDraftN(e.target.value)} style={{ width:"100%", background:BG, border:"1px solid "+BORDER, color:TEXT, borderRadius:8, padding:"8px 10px", fontSize:13, fontFamily:"monospace", outline:"none", boxSizing:"border-box" }} />
+          </div>
+          <div style={{ marginBottom:10 }}>
+            <div style={{ fontSize:9, color:DIM, marginBottom:4 }}>TEMPERATURA (°C)</div>
+            <input type="tel" inputMode="numeric" value={draftV} onChange={e=>setDraftV(e.target.value)} style={{ width:"100%", background:BG, border:"1px solid "+BORDER, color:RED, borderRadius:8, padding:"8px 10px", fontSize:22, fontWeight:700, fontFamily:"monospace", outline:"none", boxSizing:"border-box" }} />
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={salvarEdicao} style={{ flex:1, background:GREEN, border:"none", color:"#000", borderRadius:8, padding:"10px 0", cursor:"pointer", fontWeight:700, fontFamily:"monospace" }}>✓ Salvar</button>
+            <button onClick={()=>setEditIdx(null)} style={{ flex:1, background:"#1e2636", border:"1px solid "+BORDER, color:DIM, borderRadius:8, padding:"10px 0", cursor:"pointer", fontFamily:"monospace" }}>✕ Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+        {zonas.map((z,i)=>(
+          <div key={i} style={{ background:BG, border:"1px solid "+BORDER, borderRadius:8, padding:"8px 10px", position:"relative" }}>
+            <div style={{ fontSize:8, color:DIM, marginBottom:2 }}>{z.n}</div>
+            <div style={{ fontSize:20, fontWeight:700, color:RED, marginBottom:4 }}>{z.v}<span style={{ fontSize:10 }}>°C</span></div>
+            <div style={{ background:"#2a0a0a", borderRadius:2, height:2, marginBottom:6 }}>
+              <div style={{ width:Math.min(100,(parseFloat(z.v)||0)/2)+"%", height:"100%", background:RED, borderRadius:2 }} />
+            </div>
+            <div style={{ display:"flex", gap:4 }}>
+              <button onClick={()=>abrirEdicao(i)} style={{ flex:1, background:"#1a2636", border:"1px solid "+BLUE+"44", color:BLUE, borderRadius:6, padding:"4px 0", cursor:"pointer", fontSize:10, fontFamily:"monospace" }}>✏ editar</button>
+              <button onClick={()=>removerZona(i)} style={{ background:"#1a1020", border:"1px solid "+RED+"44", color:RED, borderRadius:6, padding:"4px 8px", cursor:"pointer", fontSize:10, fontFamily:"monospace" }}>✕</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Modal nova máquina
+function ModalNovaMaquina({ onClose, onAdd }) {
+  const [nome, setNome] = useState("");
+  function adicionar() {
+    if (!nome.trim()) return;
+    onAdd({ id:"CAN-"+Date.now().toString().slice(-4), name:nome.trim(), status:"idle", operator:"Sem operador", product:"SEM PRODUÇÃO", ordem:"", inicio:"", termino:"", ciclo:0, meta:0, real:0, peso:0, pcsciclo:1, rpm_ext:"", rpm_pux:"", amper:"", obs:"", zonas:[] });
+    onClose();
+  }
+  return (
+    <div style={{ position:"fixed", inset:0, background:"#000d", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div style={{ background:"#0d1525", border:"1px solid "+BLUE+"44", borderRadius:16, padding:24, width:"100%", maxWidth:320 }}>
+        <div style={{ fontSize:15, fontWeight:700, color:TEXT, marginBottom:16 }}>Nova Máquina</div>
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:9, color:DIM, marginBottom:4 }}>NOME DA MÁQUINA</div>
+          <input value={nome} onChange={e=>setNome(e.target.value)} placeholder="Ex: EXT 10" autoFocus
+            style={{ width:"100%", background:"#0a1628", border:"2px solid "+BLUE, color:TEXT, borderRadius:8, padding:"10px 12px", fontSize:16, fontFamily:"monospace", outline:"none", boxSizing:"border-box" }} />
+        </div>
+        <div style={{ display:"flex", gap:10 }}>
+          <button onClick={adicionar} style={{ flex:1, background:GREEN, border:"none", color:"#000", borderRadius:10, padding:"14px 0", cursor:"pointer", fontSize:14, fontWeight:900, fontFamily:"monospace" }}>✓ Adicionar</button>
+          <button onClick={onClose} style={{ flex:1, background:"#1e2636", border:"1px solid "+BORDER, color:DIM, borderRadius:10, padding:"14px 0", cursor:"pointer", fontSize:14, fontFamily:"monospace" }}>✕ Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Modal confirmar exclusão
+function ModalDeletar({ m, onClose, onConfirm }) {
+  return (
+    <div style={{ position:"fixed", inset:0, background:"#000d", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div style={{ background:"#0d1525", border:"1px solid "+RED+"44", borderRadius:16, padding:24, width:"100%", maxWidth:320, textAlign:"center" }}>
+        <div style={{ fontSize:30, marginBottom:12 }}>🗑</div>
+        <div style={{ fontSize:15, fontWeight:700, color:TEXT, marginBottom:8 }}>Excluir {m.name}?</div>
+        <div style={{ fontSize:12, color:DIM, marginBottom:20 }}>Esta ação não pode ser desfeita.</div>
+        <div style={{ display:"flex", gap:10 }}>
+          <button onClick={onConfirm} style={{ flex:1, background:RED, border:"none", color:"#fff", borderRadius:10, padding:"14px 0", cursor:"pointer", fontSize:14, fontWeight:900, fontFamily:"monospace" }}>Excluir</button>
+          <button onClick={onClose} style={{ flex:1, background:"#1e2636", border:"1px solid "+BORDER, color:DIM, borderRadius:10, padding:"14px 0", cursor:"pointer", fontSize:14, fontFamily:"monospace" }}>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Tela de detalhe
+function TelaDetalhe({ m, onBack, onUpdate, operadores, produtos, addOperador, addProduto }) {
+  const [now, setNow] = useState(new Date());
+  useEffect(()=>{ const t=setInterval(()=>setNow(new Date()),1000); return ()=>clearInterval(t); },[]);
+  const s = ST[m.status];
+  const pct = calcProgresso(m.inicio, m.termino);
+  const diff = Math.round(m.meta*pct/100) - m.real;
+
+  function upd(field, val) {
+    const updated = { ...m, [field]:val };
+    onUpdate(updated);
+    if (field==="operator"&&val) addOperador(val);
+    if (field==="product"&&val) addProduto(val);
+  }
+
+  return (
+    <div style={{ flex:1, overflowY:"auto", background:BG, fontFamily:"monospace" }}>
+      <div style={{ background:BG, borderBottom:"1px solid #1a2235", padding:"10px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:50 }}>
+        <button onClick={onBack} style={{ background:"#1a2636", border:"1px solid #2a4a6a", color:BLUE, borderRadius:8, padding:"6px 14px", cursor:"pointer", fontSize:12, fontFamily:"monospace", fontWeight:700 }}>‹ voltar</button>
+        <div style={{ fontSize:11, color:DIM }}>CANALETA · {m.id}</div>
+      </div>
+
+      <div style={{ padding:"16px 16px 80px" }}>
+        {/* Nome + status */}
+        <div style={{ background:CARD, borderRadius:12, padding:16, marginBottom:14, textAlign:"center" }}>
+          <div style={{ fontSize:9, color:DIM, marginBottom:4 }}>NOME DA MÁQUINA</div>
+          <div style={{ fontSize:26, fontWeight:900, color:TEXT, marginBottom:10 }}>{m.name}</div>
+          <SeletorStatus value={m.status} onChange={v=>upd("status",v)} />
+        </div>
+
+        <div style={{ fontSize:11, color:DIM, marginBottom:12 }}>✏ Toque em qualquer campo para editar</div>
+
+        {/* Operador + Horário */}
+        <div style={{ display:"flex", gap:10, marginBottom:12 }}>
+          <div style={{ flex:1 }}>
+            <Campo label="OPERADOR" value={m.operator} onChange={v=>upd("operator",v)} large sugestoes={operadores} />
+          </div>
+          <div style={{ flex:"0 0 110px", background:CARD, border:"1px solid "+BORDER, borderRadius:10, padding:"10px 14px", textAlign:"center" }}>
+            <div style={{ fontSize:9, color:DIM, marginBottom:4 }}>HORÁRIO</div>
+            <div style={{ fontSize:18, fontWeight:700, color:TEXT }}>{pad(now.getHours())}:{pad(now.getMinutes())}<span style={{ fontSize:11, color:DIM }}>:{pad(now.getSeconds())}</span></div>
+          </div>
+        </div>
+
+        {/* Produção */}
+        <div style={{ background:CARD, border:"1px solid "+BORDER, borderRadius:12, padding:16, marginBottom:12 }}>
+          <div style={{ fontSize:10, color:BLUE, marginBottom:12 }}>▶ PRODUÇÃO EM CURSO</div>
+          <div style={{ marginBottom:10 }}>
+            <Campo label="PRODUTO" value={m.product} onChange={v=>upd("product",v)} large sugestoes={produtos} />
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+            <Campo label="ORDEM"         value={m.ordem}       onChange={v=>upd("ordem",v)} />
+            <Campo label="INÍCIO"        value={m.inicio}      onChange={v=>upd("inicio",v)} />
+            <Campo label="TÉRMINO PREV." value={m.termino}     onChange={v=>upd("termino",v)} />
+            <Campo label="CICLO (SEG)"   value={String(m.ciclo)} onChange={v=>upd("ciclo",parseInt(v)||0)} type="number" />
+          </div>
+          <div style={{ background:BG, border:"1px solid "+BORDER, borderRadius:10, padding:"10px 14px", marginBottom:10 }}>
+            <div style={{ fontSize:9, color:DIM, marginBottom:4 }}>META DO PERÍODO</div>
+            <div style={{ fontSize:20, fontWeight:900, color:GREEN }}>{fmt(m.meta)} pçs</div>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+            <Campo label="PRODUÇÃO REAL" value={String(m.real)}     onChange={v=>upd("real",parseInt(v)||0)} type="number" />
+            <Campo label="PESO DA PEÇA"  value={String(m.peso)}     onChange={v=>upd("peso",parseFloat(v)||0)} unit="kg" />
+            <Campo label="PÇS/CICLO"     value={String(m.pcsciclo)} onChange={v=>upd("pcsciclo",parseInt(v)||1)} type="number" />
+          </div>
+          {/* Barra de progresso */}
+          <div style={{ marginBottom:10 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+              <span style={{ fontSize:10, color:DIM }}>Progresso atual</span>
+              <span style={{ fontSize:10, color:GREEN }}>{fmt(m.real)} / {fmt(m.meta)} pçs ({pct}%)</span>
+            </div>
+            <div style={{ background:"#1a1f2e", borderRadius:4, height:6 }}>
+              <div style={{ width:pct+"%", height:"100%", background:GREEN, borderRadius:4, transition:"width 1s" }} />
+            </div>
+            <div style={{ fontSize:9, color:DIM, marginTop:4 }}>⏱ contagem automática · atualiza com o relógio</div>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+            <div style={{ background:BG, border:"1px solid "+GREEN+"33", borderRadius:8, padding:10 }}>
+              <div style={{ fontSize:9, color:DIM, marginBottom:4 }}>PESO PRODUZIDO</div>
+              <div style={{ fontSize:18, fontWeight:900, color:GREEN }}>{(m.real*m.peso).toFixed(2)} kg</div>
+            </div>
+            <div style={{ background:BG, border:"1px solid "+GOLD+"33", borderRadius:8, padding:10 }}>
+              <div style={{ fontSize:9, color:DIM, marginBottom:4 }}>PESO META</div>
+              <div style={{ fontSize:18, fontWeight:900, color:GOLD }}>{(m.meta*m.peso).toFixed(2)} kg</div>
+            </div>
+            <div style={{ background:BG, border:"1px solid "+RED+"33", borderRadius:8, padding:10 }}>
+              <div style={{ fontSize:9, color:DIM, marginBottom:4 }}>DIFERENÇA (PÇS)</div>
+              <div style={{ fontSize:18, fontWeight:900, color:diff<=0?GREEN:RED }}>{diff<=0?"+":"-"}{fmt(Math.abs(diff))} pçs</div>
+            </div>
+            <div style={{ background:BG, border:"1px solid "+RED+"33", borderRadius:8, padding:10 }}>
+              <div style={{ fontSize:9, color:DIM, marginBottom:4 }}>PERDA MATERIAL</div>
+              <div style={{ fontSize:18, fontWeight:900, color:RED }}>-{(Math.max(0,diff)*m.peso).toFixed(2)} kg</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Métricas */}
+        <div style={{ background:CARD, border:"1px solid "+BORDER, borderRadius:12, padding:16, marginBottom:12 }}>
+          <div style={{ fontSize:10, color:BLUE, marginBottom:12 }}>📊 MÉTRICAS</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            <Campo label="RPM EXTRUSORA" value={m.rpm_ext} onChange={v=>upd("rpm_ext",v)} unit="rpm" />
+            <Campo label="RPM PUXADOR"   value={m.rpm_pux} onChange={v=>upd("rpm_pux",v)} unit="rpm" />
+            <Campo label="AMPERAGEM"     value={m.amper}   onChange={v=>upd("amper",v)}   unit="A" />
+          </div>
+        </div>
+
+        {/* Zonas */}
+        <PainelZonas zonas={m.zonas} onChange={z=>onUpdate({...m,zonas:z})} />
+
+        {/* Observação */}
+        <div style={{ background:CARD, border:"1px solid "+BORDER, borderRadius:12, padding:16, marginBottom:14 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+            <div>
+              <div style={{ fontSize:13, fontWeight:700, color:TEXT }}>💬 Observação</div>
+              <div style={{ fontSize:10, color:DIM }}>Salvo ao finalizar o turno</div>
+            </div>
+            <button style={{ background:"#1a2636", border:"1px solid #2a4a6a", color:BLUE, borderRadius:8, padding:"6px 12px", cursor:"pointer", fontSize:11, fontFamily:"monospace" }}>🎤 Falar</button>
+          </div>
+          <textarea value={m.obs||""} onChange={e=>upd("obs",e.target.value)}
+            placeholder="Digite ou toque em Falar para usar o microfone..."
+            style={{ width:"100%", background:BG, border:"1px solid "+BORDER, color:TEXT, borderRadius:8, padding:12, fontSize:12, fontFamily:"monospace", resize:"none", height:80, boxSizing:"border-box", outline:"none" }} />
+        </div>
+
+        {m.status==="running" && (
+          <button style={{ display:"block", width:"100%", background:"linear-gradient(135deg,#1a3a8a,#2a5acc)", border:"2px solid "+BLUE+"44", borderRadius:14, padding:"18px 0", color:TEXT, fontWeight:900, fontSize:16, fontFamily:"monospace", letterSpacing:".1em", cursor:"pointer" }}>
+            ✓ FINALIZAR TURNO
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Card da máquina com pressionar para deletar
+function CardMaquina({ m, onOpen, onDelete }) {
+  const s = ST[m.status];
+  const pct = calcProgresso(m.inicio, m.termino);
+  const pressTimer = useRef(null);
+  const didLongPress = useRef(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+
+  function onPressStart() {
+    didLongPress.current = false;
+    pressTimer.current = setTimeout(()=>{
+      didLongPress.current = true;
+      setConfirmDel(true);
+    }, 800);
+  }
+  function onPressEnd() {
+    clearTimeout(pressTimer.current);
+  }
+  function handleClick() {
+    if (!didLongPress.current) onOpen();
+  }
+
+  return (
+    <>
+      {confirmDel && <ModalDeletar m={m} onClose={()=>setConfirmDel(false)} onConfirm={()=>{ onDelete(m.id); setConfirmDel(false); }} />}
+      <div
+        onClick={handleClick}
+        onMouseDown={onPressStart} onMouseUp={onPressEnd} onMouseLeave={onPressEnd}
+        onTouchStart={onPressStart} onTouchEnd={onPressEnd} onTouchCancel={onPressEnd}
+        style={{ background:CARD, border:"1px solid "+s.color+"33", borderRadius:14, padding:"14px 16px", marginBottom:10, cursor:"pointer", position:"relative", overflow:"hidden", userSelect:"none", WebkitUserSelect:"none", WebkitTouchCallout:"none" }}>
+        <div style={{ position:"absolute", top:0, right:0, width:40, height:40, background:"linear-gradient(225deg,"+s.color+"22,transparent 70%)", borderBottomLeftRadius:40 }} />
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
+          <div>
+            <div style={{ fontSize:9, color:DIM }}>{m.id}</div>
+            <div style={{ fontSize:15, fontWeight:700, color:TEXT }}>{m.name}</div>
+          </div>
+          <div style={{ display:"flex", alignItems:"center", gap:4, background:s.bg, border:"1px solid "+s.color+"44", borderRadius:20, padding:"2px 8px", fontSize:9, color:s.color, fontWeight:700 }}>
+            <span style={{ width:4, height:4, borderRadius:"50%", background:s.color, display:"inline-block" }} />{s.label}
+          </div>
+        </div>
+        {m.status==="running" && (
+          <>
+            <div style={{ fontSize:11, color:s.color, fontWeight:700, marginBottom:2 }}>👤 {m.operator}</div>
+            <div style={{ fontSize:10, color:DIM, marginBottom:8 }}>📦 {m.product}</div>
+            <div style={{ fontSize:12, color:DIM, marginBottom:4 }}>
+              Real: <span style={{ color:GREEN }}>{m.real}</span> / Meta: <span style={{ color:BLUE }}>{fmt(m.meta)}</span>
+            </div>
+            <div style={{ background:"#1a1f2e", borderRadius:3, height:3, marginBottom:4 }}>
+              <div style={{ width:pct+"%", height:"100%", background:GREEN, borderRadius:3 }} />
+            </div>
+          </>
+        )}
+        {(m.status==="idle"||m.status==="maintenance") && (
+          <div style={{ fontSize:11, color:s.color, fontStyle:"italic", marginBottom:4 }}>{m.product}</div>
+        )}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:8, borderTop:"1px solid "+BORDER, paddingTop:8 }}>
+          <span style={{ fontSize:9, color:DIM }}>Segure para excluir</span>
+          <span style={{ fontSize:10, color:BLUE }}>✏ editar →</span>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// Aba principal
+function AbaCanaleta() {
+  const [maquinas, setMaquinas] = useState(MAQUINAS_INICIAL);
+  const [detalhe, setDetalhe] = useState(null);
+  const [filtroStatus, setFiltroStatus] = useState(null);
+  const [novaMaquina, setNovaMaquina] = useState(false);
+  const [operadores, setOperadores] = useState(["Fabrício","Leandro","Felipe","Sem operador","Equipe Manutenção"]);
+  const [produtos, setProdutos] = useState(["Canaleta 50X50X2000mm BR SEMI ABERTA. (CX 9035)","Canaleta 20X10X2000mm C/DIVISÓRIA C/ FITA DF","Canaleta 20X10X2000mm C/ DF"]);
+
+  function abrirDetalhe(m) { setDetalhe(m); }
+  function voltarDetalhe() { setDetalhe(null); }
+  function abrirFiltro(s) { setFiltroStatus(s); }
+  function voltarFiltro() { setFiltroStatus(null); }
+
+  function updateMaquina(updated) {
+    setMaquinas(ms=>ms.map(m=>m.id===updated.id?updated:m));
+    if (detalhe?.id===updated.id) setDetalhe(updated);
+  }
+  function deletarMaquina(id) { setMaquinas(ms=>ms.filter(m=>m.id!==id)); }
+  function addOperador(op) { if(!operadores.includes(op)) setOperadores(o=>[op,...o]); }
+  function addProduto(pr)  { if(!produtos.includes(pr))   setProdutos(p=>[pr,...p]); }
+
+  const hoje = new Date().toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long",year:"numeric"});
+  const counts = { running:maquinas.filter(m=>m.status==="running").length, idle:maquinas.filter(m=>m.status==="idle").length, maintenance:maquinas.filter(m=>m.status==="maintenance").length };
+  const totalHoje = maquinas.reduce((s,m)=>s+m.real,0);
+
+  if (detalhe) return <TelaDetalhe m={detalhe} onBack={voltarDetalhe} onUpdate={updateMaquina} operadores={operadores} produtos={produtos} addOperador={addOperador} addProduto={addProduto} />;
+
+  if (filtroStatus) {
+    const cfg = ST[filtroStatus];
+    const lista = maquinas.filter(m=>m.status===filtroStatus);
+    return (
+      <div style={{ flex:1, overflowY:"auto", background:BG, minHeight:"100vh", fontFamily:"monospace", padding:"0 16px 80px" }}>
+        <div style={{ position:"sticky", top:0, zIndex:40, background:BG, borderBottom:"1px solid #1a2235", marginLeft:-16, marginRight:-16, padding:"12px 16px", marginBottom:16, display:"flex", alignItems:"center", gap:12 }}>
+          <button onClick={voltarFiltro} style={{ background:"#1a2636", border:"1px solid #2a4a6a", color:BLUE, borderRadius:8, padding:"6px 14px", cursor:"pointer", fontSize:12, fontFamily:"monospace", fontWeight:700 }}>‹ voltar</button>
+          <div>
+            <div style={{ fontSize:10, color:cfg.color, textTransform:"uppercase", letterSpacing:".1em" }}>{cfg.labelUp}</div>
+            <div style={{ fontSize:16, fontWeight:700, color:TEXT }}>{lista.length} máquina{lista.length!==1?"s":""}</div>
+          </div>
+        </div>
+        {lista.map(m=>(
+          <CardMaquina key={m.id} m={m} onOpen={()=>abrirDetalhe(m)} onDelete={deletarMaquina} />
+        ))}
+        {lista.length===0 && <div style={{ textAlign:"center", padding:"40px 0", color:DIM }}>Nenhuma máquina neste status.</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ flex:1, overflowY:"auto", background:BG, fontFamily:"monospace", padding:"0 16px 80px" }}>
+      {novaMaquina && <ModalNovaMaquina onClose={()=>setNovaMaquina(false)} onAdd={m=>setMaquinas(ms=>[...ms,m])} />}
+
+      <div style={{ position:"sticky", top:0, zIndex:40, background:BG, borderBottom:"1px solid #1a2235", marginLeft:-16, marginRight:-16, padding:"10px 16px", marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <div>
+          <div style={{ fontSize:10, color:DIM }}>TURNO A — TOTAL HOJE</div>
+          <div style={{ fontSize:18, fontWeight:900, color:GREEN }}>{fmt(totalHoje)} pçs</div>
+        </div>
+        <div style={{ textAlign:"right" }}>
+          <div style={{ fontSize:10, color:DIM }}>EM OPERAÇÃO</div>
+          <div style={{ fontSize:18, fontWeight:900, color:GREEN }}>{counts.running} máq.</div>
+        </div>
+      </div>
+
+      <div style={{ marginBottom:20 }}>
+        <div style={{ fontSize:34, fontWeight:900, color:TEXT }}>CANALETA</div>
+        <div style={{ fontSize:12, color:DIM, marginTop:2, textTransform:"capitalize" }}>{hoje}</div>
+      </div>
+
+      <div style={{ display:"flex", gap:10, marginBottom:20, flexWrap:"wrap" }}>
+        {Object.entries(counts).map(([status,count])=>{
+          const cfg=ST[status];
+          return (
+            <div key={status} onClick={()=>abrirFiltro(status)} style={{ background:CARD, border:"1px solid "+cfg.color+"44", borderRadius:10, padding:"10px 14px", minWidth:82, textAlign:"center", cursor:"pointer" }}>
+              <div style={{ fontSize:22, fontWeight:700, color:cfg.color }}>{count}</div>
+              <div style={{ fontSize:9, color:cfg.color, textTransform:"uppercase", letterSpacing:".08em" }}>{cfg.label}</div>
+            </div>
+          );
+        })}
+        <button onClick={()=>setNovaMaquina(true)} style={{ background:"#1a2636", border:"1px dashed #2a4a6a", color:BLUE, borderRadius:10, padding:"10px 14px", cursor:"pointer", fontSize:12, fontFamily:"monospace", fontWeight:700 }}>+ Nova</button>
+      </div>
+
+      {["running","idle","maintenance"].map(grp=>{
+        const grpM=maquinas.filter(m=>m.status===grp);
+        if(!grpM.length) return null;
+        const cfg=ST[grp];
+        return (
+          <div key={grp} style={{ marginBottom:22 }}>
+            <div style={{ fontSize:10, color:cfg.color, textTransform:"uppercase", letterSpacing:".14em", marginBottom:10, display:"flex", alignItems:"center", gap:8 }}>
+              <span style={{ width:6, height:6, borderRadius:"50%", background:cfg.color, display:"inline-block" }} />
+              {cfg.labelUp} — {grpM.length} máquina{grpM.length>1?"s":""}
+            </div>
+            {grpM.map(m=>(
+              <CardMaquina key={m.id} m={m} onOpen={()=>abrirDetalhe(m)} onDelete={deletarMaquina} />
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
+
+const BG = "#070b12";
+const CARD = "#0d1117";
+const BORDER = "#1e2636";
+const TEXT = "#e0e8ff";
+const DIM = "#4a5a7a";
+const BLUE = "#4a8aff";
+const PURPLE = "#c47aff";
+const GREEN = "#00e5a0";
+const RED = "#ff4d6d";
+const GOLD = "#f5a623";
+
+function fmt(n) { return Number(n).toLocaleString("pt-BR"); }
+function toKey(y, m, d) { return `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`; }
+
+const HISTORICO = {
+  "2026-06-11": [
+    { id: "CAN-01", name: "EXT 02", product: "Canaleta 50X50X2000mm BR SEMI ABERTA. (CX 9035)", turnoA: 688,  turnoB: 580,  metaA: 696,  metaB: 696  },
+    { id: "CAN-02", name: "EXT 04", product: "Canaleta 20X10X2000mm C/DIVISÓRIA C/ FITA DF",    turnoA: 3300, turnoB: 2800, metaA: 4114, metaB: 4114 },
+    { id: "CAN-03", name: "EXT 08", product: "Canaleta 20X10X2000mm C/ DF",                      turnoA: 3500, turnoB: 3000, metaA: 3926, metaB: 3926 },
+  ],
+  "2026-06-10": [
+    { id: "CAN-01", name: "EXT 02", product: "Canaleta 50X50X2000mm BR SEMI ABERTA. (CX 9035)", turnoA: 650,  turnoB: 600,  metaA: 696,  metaB: 696  },
+    { id: "CAN-02", name: "EXT 04", product: "Canaleta 20X10X2000mm C/DIVISÓRIA C/ FITA DF",    turnoA: 3100, turnoB: 2600, metaA: 4114, metaB: 4114 },
+    { id: "CAN-03", name: "EXT 08", product: "Canaleta 20X10X2000mm C/ DF",                      turnoA: 3200, turnoB: 2900, metaA: 3926, metaB: 3926 },
+  ],
+  "2026-06-09": [
+    { id: "CAN-01", name: "EXT 02", product: "Canaleta 50X50X2000mm BR SEMI ABERTA. (CX 9035)", turnoA: 700,  turnoB: 620,  metaA: 696,  metaB: 696  },
+    { id: "CAN-02", name: "EXT 04", product: "Canaleta 20X10X2000mm C/DIVISÓRIA C/ FITA DF",    turnoA: 3400, turnoB: 2700, metaA: 4114, metaB: 4114 },
+    { id: "CAN-03", name: "EXT 08", product: "Canaleta 20X10X2000mm C/ DF",                      turnoA: 3300, turnoB: 2800, metaA: 3926, metaB: 3926 },
+  ],
+};
+
+// ── Modal detalhe da máquina (sobretela) ──────────────────────
+function ModalDetalhe({ m, dia, onClose }) {
+  const diaFmt = new Date(dia + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const winner = m.turnoA > m.turnoB ? "A" : m.turnoB > m.turnoA ? "B" : null;
+  const tot = m.turnoA + m.turnoB;
+  const diffA = m.turnoA - m.metaA;
+  const diffB = m.turnoB - m.metaB;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000c", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "#0d1525", border: "1px solid #2a3450", borderRadius: 18, padding: 20, width: "100%", maxWidth: 400, maxHeight: "90vh", overflowY: "auto" }}>
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 16 }}>🏭</span>
+              <span style={{ fontSize: 16, fontWeight: 700, color: TEXT }}>{m.name}</span>
+            </div>
+            <div style={{ fontSize: 13, color: TEXT, marginBottom: 2 }}>{m.product}</div>
+            <div style={{ fontSize: 11, color: DIM }}>{diaFmt}</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: DIM, fontSize: 24, cursor: "pointer", lineHeight: 1 }}>×</button>
+        </div>
+
+        {/* Cards Turno A vs B */}
+        <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+          {/* Turno A */}
+          <div style={{ flex: 1, background: winner === "A" ? "#0a1628" : CARD, border: "2px solid " + (winner === "A" ? BLUE : BORDER), borderRadius: 12, padding: 14, textAlign: "center" }}>
+            <div style={{ fontSize: 10, color: BLUE, fontWeight: 700, marginBottom: 6 }}>TURNO A {winner === "A" ? "🏆" : ""}</div>
+            <div style={{ fontSize: 40, fontWeight: 900, color: BLUE, lineHeight: 1, marginBottom: 4 }}>{fmt(m.turnoA)}</div>
+            <div style={{ fontSize: 10, color: DIM, marginBottom: 8 }}>pçs produzidas</div>
+            <div style={{ background: "#1a1f2e", borderRadius: 3, height: 4, marginBottom: 6 }}>
+              <div style={{ width: (tot > 0 ? Math.round(m.turnoA / tot * 100) : 50) + "%", height: "100%", background: BLUE, borderRadius: 3 }} />
+            </div>
+            <div style={{ fontSize: 11, color: diffA >= 0 ? GREEN : RED }}>
+              {diffA >= 0 ? "▲" : "▼"} {fmt(Math.abs(diffA))} pçs {diffA >= 0 ? "acima" : "abaixo"}
+            </div>
+          </div>
+          {/* Turno B */}
+          <div style={{ flex: 1, background: winner === "B" ? "#150a28" : CARD, border: "2px solid " + (winner === "B" ? PURPLE : BORDER), borderRadius: 12, padding: 14, textAlign: "center" }}>
+            <div style={{ fontSize: 10, color: PURPLE, fontWeight: 700, marginBottom: 6 }}>{winner === "B" ? "🏆 " : ""}TURNO B</div>
+            <div style={{ fontSize: 40, fontWeight: 900, color: PURPLE, lineHeight: 1, marginBottom: 4 }}>{fmt(m.turnoB)}</div>
+            <div style={{ fontSize: 10, color: DIM, marginBottom: 8 }}>pçs produzidas</div>
+            <div style={{ background: "#1a1f2e", borderRadius: 3, height: 4, marginBottom: 6 }}>
+              <div style={{ width: (tot > 0 ? Math.round(m.turnoB / tot * 100) : 50) + "%", height: "100%", background: PURPLE, borderRadius: 3 }} />
+            </div>
+            <div style={{ fontSize: 11, color: diffB >= 0 ? GREEN : RED }}>
+              {diffB >= 0 ? "▲" : "▼"} {fmt(Math.abs(diffB))} pçs {diffB >= 0 ? "acima" : "abaixo"}
+            </div>
+          </div>
+        </div>
+
+        {/* Diferença entre turnos */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid " + BORDER, paddingTop: 12, marginBottom: 12 }}>
+          <span style={{ fontSize: 12, color: DIM }}>Diferença entre turnos</span>
+          <span style={{ fontSize: 16, fontWeight: 700, color: GOLD }}>{fmt(Math.abs(m.turnoA - m.turnoB))} pçs</span>
+        </div>
+
+        {/* Total */}
+        <div style={{ background: "#111622", border: "1px solid #2a3450", borderRadius: 10, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <span style={{ fontSize: 12, color: DIM }}>Total A+B</span>
+          <span style={{ fontSize: 18, fontWeight: 900, color: GOLD }}>{fmt(tot)} pçs</span>
+        </div>
+
+        <div style={{ textAlign: "center", fontSize: 12, color: DIM, fontStyle: "italic" }}>
+          Nenhuma observação registrada neste dia
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Modal Calendário ──────────────────────────────────────────
+function ModalCalendario({ diaAtivo, onSelect, onClose }) {
+  const hoje = new Date();
+  const [ano, setAno] = useState(hoje.getFullYear());
+  const [mes, setMes] = useState(hoje.getMonth());
+  const SEMANA = ["D","S","T","Q","Q","S","S"];
+  const primeiroDia = new Date(ano, mes, 1).getDay();
+  const totalDias   = new Date(ano, mes + 1, 0).getDate();
+  const nomeMes = new Date(ano, mes, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+
+  function prevMes() { if (mes === 0) { setMes(11); setAno(a => a-1); } else setMes(m => m-1); }
+  function nextMes() { const n = new Date(ano, mes+1, 1); if (n <= hoje) { if (mes === 11) { setMes(0); setAno(a => a+1); } else setMes(m => m+1); } }
+
+  const cells = [];
+  for (let i = 0; i < primeiroDia; i++) cells.push(null);
+  for (let d = 1; d <= totalDias; d++) cells.push(d);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000c", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "#0d1525", border: "1px solid #2a3450", borderRadius: 16, padding: 20, width: "100%", maxWidth: 340 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <button onClick={prevMes} style={{ background: "#1a2636", border: "1px solid #2a3450", color: BLUE, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 16, fontFamily: "monospace" }}>‹</button>
+          <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, textTransform: "capitalize" }}>{nomeMes}</div>
+          <button onClick={nextMes} style={{ background: "#1a2636", border: "1px solid #2a3450", color: new Date(ano, mes+1, 1) <= hoje ? BLUE : "#1a2636", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 16, fontFamily: "monospace" }}>›</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 6 }}>
+          {SEMANA.map((d, i) => <div key={i} style={{ textAlign: "center", fontSize: 10, color: DIM }}>{d}</div>)}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+          {cells.map((d, i) => {
+            if (!d) return <div key={i} />;
+            const key = toKey(ano, mes, d);
+            const temDados = !!HISTORICO[key];
+            const isAtivo = diaAtivo === key;
+            const isHoje = d === hoje.getDate() && mes === hoje.getMonth() && ano === hoje.getFullYear();
+            const isFuturo = new Date(ano, mes, d) > hoje;
+            return (
+              <div key={i} onClick={() => { if (!isFuturo) { onSelect(key); onClose(); } }}
+                style={{ textAlign: "center", borderRadius: 8, padding: "8px 0", fontSize: 13, fontWeight: isAtivo ? 900 : 400, cursor: isFuturo ? "default" : "pointer", background: isAtivo ? BLUE : isHoje ? "#1a3a6a" : "transparent", color: isAtivo ? "#fff" : isFuturo ? "#2a3a4a" : temDados ? TEXT : DIM, border: isHoje && !isAtivo ? "1px solid " + BLUE + "55" : "1px solid transparent", position: "relative" }}>
+                {d}
+                {temDados && !isAtivo && <div style={{ position: "absolute", bottom: 2, left: "50%", transform: "translateX(-50%)", width: 4, height: 4, borderRadius: "50%", background: GREEN }} />}
+              </div>
+            );
+          })}
+        </div>
+        <button onClick={onClose} style={{ display: "block", width: "100%", marginTop: 16, background: "#1e2636", border: "1px solid #2a3450", color: DIM, borderRadius: 10, padding: "12px 0", cursor: "pointer", fontSize: 13, fontFamily: "monospace" }}>Fechar</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Aba Produção ──────────────────────────────────────────────
+function AbaProducao() {
+  const hoje = new Date();
+  const hojeKey = toKey(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+  const [diaAtivo, setDiaAtivo] = useState(hojeKey);
+  const [modalM, setModalM] = useState(null);
+  const [calAberto, setCalAberto] = useState(false);
+
+  const diaFmt = new Date(diaAtivo + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const maquinas = HISTORICO[diaAtivo] || [];
+  const totalA = maquinas.reduce((s, m) => s + m.turnoA, 0);
+  const totalB = maquinas.reduce((s, m) => s + m.turnoB, 0);
+  const totalG = totalA + totalB;
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto", background: BG, fontFamily: "monospace", padding: "16px 16px 80px" }}>
+      {calAberto && <ModalCalendario diaAtivo={diaAtivo} onSelect={setDiaAtivo} onClose={() => setCalAberto(false)} />}
+      {modalM    && <ModalDetalhe m={modalM} dia={diaAtivo} onClose={() => setModalM(null)} />}
+
+      {/* Avatar + info */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+        <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#1a2a4a", border: "1px solid #2a4a6a", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>👤</div>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>Administrador</div>
+          <div style={{ fontSize: 11, color: DIM }}>Admin</div>
+        </div>
+      </div>
+
+      {/* Seletor de dia + botão calendário */}
+      <div style={{ fontSize: 9, color: DIM, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 8 }}>DIA</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <button onClick={() => setCalAberto(true)}
+          style={{ background: "#1a3a6a", border: "1px solid " + BLUE + "99", color: BLUE, borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13, fontFamily: "monospace", fontWeight: 700 }}>
+          {diaFmt}
+        </button>
+        <button onClick={() => setCalAberto(true)}
+          style={{ background: "#0a0f1e", border: "1px solid #2a3450", borderRadius: 8, padding: "8px 10px", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>
+          📅
+        </button>
+      </div>
+
+      {/* Legenda turno */}
+      <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ width: 10, height: 10, borderRadius: 2, background: BLUE }} />
+          <span style={{ fontSize: 11, color: BLUE }}>Turno A · 05:00–17:00</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ width: 10, height: 10, borderRadius: 2, background: PURPLE }} />
+          <span style={{ fontSize: 11, color: PURPLE }}>Turno B · 17:00–05:00</span>
+        </div>
+      </div>
+
+      {maquinas.length === 0 && (
+        <div style={{ textAlign: "center", padding: "40px 0", color: DIM, fontSize: 13 }}>Nenhum registro para este dia.</div>
+      )}
+
+      {/* Cards */}
+      {maquinas.map(m => {
+        const pctA = m.metaA > 0 ? Math.min(100, Math.round(m.turnoA / m.metaA * 100)) : 0;
+        const pctB = m.metaB > 0 ? Math.min(100, Math.round(m.turnoB / m.metaB * 100)) : 0;
+        const diffA = m.turnoA - m.metaA;
+        const diffB = m.turnoB - m.metaB;
+        return (
+          <div key={m.id} style={{ background: CARD, border: "1px solid " + BORDER, borderRadius: 14, padding: "14px 16px", marginBottom: 10 }}>
+            {/* Cabeçalho */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 16 }}>🏭</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>{m.name}</span>
+              </div>
+              <span style={{ fontSize: 11, color: DIM }}>{diaFmt}</span>
+            </div>
+            {/* Produto + ver */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <span style={{ fontSize: 11, color: DIM, flex: 1, marginRight: 8 }}>{m.product}</span>
+              <button onClick={() => setModalM(m)}
+                style={{ background: "transparent", border: "none", color: BLUE, cursor: "pointer", fontSize: 11, fontFamily: "monospace", whiteSpace: "nowrap" }}>
+                ver ›
+              </button>
+            </div>
+            {/* Turno A */}
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                <span style={{ fontSize: 11, color: BLUE, fontWeight: 700 }}>Turno A</span>
+                <span>
+                  <span style={{ fontSize: 16, fontWeight: 900, color: BLUE }}>{fmt(m.turnoA)}</span>
+                  <span style={{ fontSize: 10, color: DIM }}> pçs </span>
+                  <span style={{ fontSize: 10, color: diffA >= 0 ? GREEN : RED }}>
+                    {diffA >= 0 ? "▲" : "▼"}{fmt(Math.abs(diffA))}
+                  </span>
+                </span>
+              </div>
+              <div style={{ background: "#1a1f2e", borderRadius: 3, height: 4 }}>
+                <div style={{ width: pctA + "%", height: "100%", background: BLUE, borderRadius: 3 }} />
+              </div>
+            </div>
+            {/* Turno B */}
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                <span style={{ fontSize: 11, color: PURPLE, fontWeight: 700 }}>Turno B</span>
+                <span>
+                  <span style={{ fontSize: 16, fontWeight: 900, color: PURPLE }}>{fmt(m.turnoB)}</span>
+                  <span style={{ fontSize: 10, color: DIM }}> pçs </span>
+                  <span style={{ fontSize: 10, color: diffB >= 0 ? GREEN : RED }}>
+                    {diffB >= 0 ? "▲" : "▼"}{fmt(Math.abs(diffB))}
+                  </span>
+                </span>
+              </div>
+              <div style={{ background: "#1a1f2e", borderRadius: 3, height: 4 }}>
+                <div style={{ width: pctB + "%", height: "100%", background: PURPLE, borderRadius: 3 }} />
+              </div>
+            </div>
+            {/* Total */}
+            <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid " + BORDER, paddingTop: 8 }}>
+              <span style={{ fontSize: 10, color: DIM }}>Total A+B</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: GOLD }}>{fmt(m.turnoA + m.turnoB)} pçs</span>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Totais do dia */}
+      {maquinas.length > 0 && (
+        <div style={{ background: CARD, border: "1px solid " + BORDER, borderRadius: 12, padding: "14px 16px" }}>
+          <div style={{ fontSize: 9, color: DIM, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 12 }}>TOTAIS — {diaFmt}</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {[["TURNO A", BLUE, totalA], ["TURNO B", PURPLE, totalB], ["GERAL", GREEN, totalG]].map(([l, c, v]) => (
+              <div key={l} style={{ flex: 1, background: BG, borderRadius: 8, padding: 8, textAlign: "center", border: "1px solid " + c + "33" }}>
+                <div style={{ fontSize: 8, color: c, fontWeight: 700, marginBottom: 4 }}>{l}</div>
+                <div style={{ fontSize: 20, fontWeight: 900, color: c }}>{fmt(v)}</div>
+                <div style={{ fontSize: 9, color: DIM }}>pçs</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+const BG = "#070b12";
+const CARD = "#0d1117";
+const BORDER = "#1e2636";
+const TEXT = "#e0e8ff";
+const DIM = "#4a5a7a";
+const BLUE = "#4a8aff";
+const PURPLE = "#c47aff";
+const GREEN = "#00e5a0";
+const RED = "#ff4d6d";
+const GOLD = "#f5a623";
+
+function fmt(n) { return Number(n).toLocaleString("pt-BR"); }
+function toKey(y,m,d) { return `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`; }
+
+const ST = {
+  running:     { color: GREEN, bg: "#00e5a018", label: "Em operação",  labelUp: "EM OPERAÇÃO" },
+  idle:        { color: GOLD,  bg: "#f5a62318", label: "Aguardando",   labelUp: "AGUARDANDO" },
+  maintenance: { color: RED,   bg: "#ff4d6d18", label: "Manutenção",   labelUp: "MANUTENÇÃO" },
+};
+
+const MAQUINAS = [
+  { id:"CAN-01", name:"EXT 02", status:"running",     regs:3 },
+  { id:"CAN-02", name:"EXT 04", status:"running",     regs:3 },
+  { id:"CAN-03", name:"EXT 08", status:"running",     regs:3 },
+  { id:"CAN-06", name:"EXT 05", status:"idle",        regs:1 },
+  { id:"CAN-04", name:"EXT 09", status:"maintenance", regs:0 },
+  { id:"CAN-05", name:"EXT 07", status:"maintenance", regs:0 },
+];
+
+// Histórico simulado por máquina e dia
+const HISTORICO = {
+  "CAN-01": [
+    { data:"11/06/2026", turno:"A", produto:"Canaleta 50X50X2000mm BR SEMI ABERTA. (CX 9035)", prodA:688,  prodB:580,  metaA:696,  metaB:696  },
+    { data:"10/06/2026", turno:"A", produto:"Canaleta 50X50X2000mm BR SEMI ABERTA. (CX 9035)", prodA:650,  prodB:600,  metaA:696,  metaB:696  },
+    { data:"09/06/2026", turno:"A", produto:"Canaleta 50X50X2000mm BR SEMI ABERTA. (CX 9035)", prodA:700,  prodB:620,  metaA:696,  metaB:696  },
+  ],
+  "CAN-02": [
+    { data:"11/06/2026", turno:"A", produto:"Canaleta 20X10X2000mm C/DIVISÓRIA C/ FITA DF",    prodA:3300, prodB:2800, metaA:4114, metaB:4114 },
+    { data:"10/06/2026", turno:"A", produto:"Canaleta 20X10X2000mm C/DIVISÓRIA C/ FITA DF",    prodA:3100, prodB:2600, metaA:4114, metaB:4114 },
+    { data:"09/06/2026", turno:"A", produto:"Canaleta 20X10X2000mm C/DIVISÓRIA C/ FITA DF",    prodA:3400, prodB:2700, metaA:4114, metaB:4114 },
+  ],
+  "CAN-03": [
+    { data:"11/06/2026", turno:"A", produto:"Canaleta 20X10X2000mm C/ DF",                      prodA:3500, prodB:3000, metaA:3926, metaB:3926 },
+    { data:"10/06/2026", turno:"A", produto:"Canaleta 20X10X2000mm C/ DF",                      prodA:3200, prodB:2900, metaA:3926, metaB:3926 },
+    { data:"09/06/2026", turno:"A", produto:"Canaleta 20X10X2000mm C/ DF",                      prodA:3300, prodB:2800, metaA:3926, metaB:3926 },
+  ],
+  "CAN-06": [
+    { data:"11/06/2026", turno:"B", produto:"Canaleta 20X10X2000mm",                            prodA:0,    prodB:450,  metaA:0,    metaB:1200 },
+  ],
+};
+
+// Modal calendário
+function ModalCalendario({ diaAtivo, onSelect, onClose }) {
+  const hoje = new Date();
+  const [ano, setAno] = useState(hoje.getFullYear());
+  const [mes, setMes] = useState(hoje.getMonth());
+  const SEMANA = ["D","S","T","Q","Q","S","S"];
+  const primeiroDia = new Date(ano,mes,1).getDay();
+  const totalDias   = new Date(ano,mes+1,0).getDate();
+  const nomeMes = new Date(ano,mes,1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+  function prevMes() { if(mes===0){setMes(11);setAno(a=>a-1);}else setMes(m=>m-1); }
+  function nextMes() { const n=new Date(ano,mes+1,1); if(n<=hoje){if(mes===11){setMes(0);setAno(a=>a+1);}else setMes(m=>m+1);} }
+  const cells=[];
+  for(let i=0;i<primeiroDia;i++) cells.push(null);
+  for(let d=1;d<=totalDias;d++) cells.push(d);
+  return (
+    <div style={{ position:"fixed",inset:0,background:"#000c",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:20 }}>
+      <div style={{ background:"#0d1525",border:"1px solid #2a3450",borderRadius:16,padding:20,width:"100%",maxWidth:340 }}>
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
+          <button onClick={prevMes} style={{ background:"#1a2636",border:"1px solid #2a3450",color:BLUE,borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:16,fontFamily:"monospace" }}>‹</button>
+          <div style={{ fontSize:13,fontWeight:700,color:TEXT,textTransform:"capitalize" }}>{nomeMes}</div>
+          <button onClick={nextMes} style={{ background:"#1a2636",border:"1px solid #2a3450",color:new Date(ano,mes+1,1)<=hoje?BLUE:"#1a2636",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:16,fontFamily:"monospace" }}>›</button>
+        </div>
+        <div style={{ display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:6 }}>
+          {SEMANA.map((d,i)=><div key={i} style={{ textAlign:"center",fontSize:10,color:DIM }}>{d}</div>)}
+        </div>
+        <div style={{ display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4 }}>
+          {cells.map((d,i)=>{
+            if(!d) return <div key={i}/>;
+            const key=toKey(ano,mes,d);
+            const dFmt=`${String(d).padStart(2,"0")}/${String(mes+1).padStart(2,"0")}/${ano}`;
+            const isAtivo=diaAtivo===dFmt;
+            const isHoje=d===hoje.getDate()&&mes===hoje.getMonth()&&ano===hoje.getFullYear();
+            const isFuturo=new Date(ano,mes,d)>hoje;
+            return (
+              <div key={i} onClick={()=>{ if(!isFuturo){onSelect(dFmt);onClose();} }}
+                style={{ textAlign:"center",borderRadius:8,padding:"8px 0",fontSize:13,fontWeight:isAtivo?900:400,cursor:isFuturo?"default":"pointer",background:isAtivo?BLUE:isHoje?"#1a3a6a":"transparent",color:isAtivo?"#fff":isFuturo?"#2a3a4a":TEXT,border:isHoje&&!isAtivo?"1px solid "+BLUE+"55":"1px solid transparent" }}>
+                {d}
+              </div>
+            );
+          })}
+        </div>
+        <button onClick={onClose} style={{ display:"block",width:"100%",marginTop:16,background:"#1e2636",border:"1px solid #2a3450",color:DIM,borderRadius:10,padding:"12px 0",cursor:"pointer",fontSize:13,fontFamily:"monospace" }}>Fechar</button>
+      </div>
+    </div>
+  );
+}
+
+// Modal detalhe do dia — com editar
+function ModalDiaMaquina({ m, reg, onClose, onSalvar }) {
+  const [editandoA, setEditandoA] = useState(false);
+  const [editandoB, setEditandoB] = useState(false);
+  const [draftA, setDraftA] = useState(String(reg.prodA));
+  const [draftB, setDraftB] = useState(String(reg.prodB));
+  const winner = reg.prodA > reg.prodB ? "A" : reg.prodB > reg.prodA ? "B" : null;
+
+  function salvarA() {
+    onSalvar({ ...reg, prodA: parseInt(draftA) || 0 });
+    setEditandoA(false);
+  }
+  function salvarB() {
+    onSalvar({ ...reg, prodB: parseInt(draftB) || 0 });
+    setEditandoB(false);
+  }
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"#000c", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:"#0d1525", border:"1px solid #2a3450", borderRadius:18, padding:20, width:"100%", maxWidth:400 }}>
+        {/* Header */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
+          <div>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+              <span style={{ fontSize:16 }}>🏭</span>
+              <span style={{ fontSize:16, fontWeight:700, color:TEXT }}>{m.name}</span>
+            </div>
+            <div style={{ fontSize:12, color:DIM }}>{reg.produto}</div>
+            <div style={{ fontSize:11, color:DIM, marginTop:2 }}>{reg.data}</div>
+          </div>
+          <button onClick={onClose} style={{ background:"none", border:"none", color:DIM, fontSize:24, cursor:"pointer", lineHeight:1 }}>×</button>
+        </div>
+
+        {/* Cards Turno A e B */}
+        <div style={{ display:"flex", gap:10, marginBottom:14 }}>
+          {/* Turno A — sempre visível */}
+          <div style={{ flex:1, background:winner==="A"?"#0a1628":CARD, border:"2px solid "+(winner==="A"?BLUE:BORDER), borderRadius:12, padding:14, textAlign:"center" }}>
+            <div style={{ fontSize:10, color:BLUE, fontWeight:700, marginBottom:6 }}>TURNO A {winner==="A"?"🏆":""}</div>
+            {editandoA ? (
+              <div style={{ display:"flex", flexDirection:"column", gap:8, alignItems:"center" }}>
+                <input type="tel" inputMode="numeric" value={draftA} autoFocus
+                  onChange={e=>setDraftA(e.target.value.replace(/\D/g,""))}
+                  onKeyDown={e=>{ if(e.key==="Enter") salvarA(); if(e.key==="Escape") setEditandoA(false); }}
+                  style={{ width:"100%", background:BG, border:"2px solid "+BLUE, color:BLUE, borderRadius:8, padding:"8px", fontSize:28, fontWeight:900, fontFamily:"monospace", textAlign:"center", outline:"none", boxSizing:"border-box" }}
+                />
+                <div style={{ display:"flex", gap:6, width:"100%" }}>
+                  <button onClick={salvarA} style={{ flex:1, background:GREEN, border:"none", color:"#000", borderRadius:8, padding:"8px 0", cursor:"pointer", fontWeight:700, fontFamily:"monospace" }}>✓</button>
+                  <button onClick={()=>setEditandoA(false)} style={{ flex:1, background:"#1e2636", border:"1px solid "+BORDER, color:DIM, borderRadius:8, padding:"8px 0", cursor:"pointer", fontFamily:"monospace" }}>✕</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize:40, fontWeight:900, color:BLUE, lineHeight:1, marginBottom:4 }}>{fmt(reg.prodA)}</div>
+                <div style={{ fontSize:10, color:DIM, marginBottom:10 }}>pçs produzidas</div>
+                <div style={{ background:"#1a1f2e", borderRadius:3, height:4, marginBottom:8 }}>
+                  <div style={{ width:(reg.metaA>0?Math.min(100,Math.round(reg.prodA/reg.metaA*100)):0)+"%", height:"100%", background:BLUE, borderRadius:3 }} />
+                </div>
+                <div style={{ fontSize:11, color:reg.prodA>=reg.metaA?GREEN:RED, marginBottom:10 }}>
+                  {reg.prodA>=reg.metaA?"▲":"▼"} {fmt(Math.abs(reg.prodA-reg.metaA))} pçs {reg.prodA>=reg.metaA?"acima":"abaixo"}
+                </div>
+                <button onClick={()=>{ setDraftA(String(reg.prodA)); setEditandoA(true); }}
+                  style={{ background:"#1a2636", border:"1px solid "+BLUE+"66", color:BLUE, borderRadius:8, padding:"6px 14px", cursor:"pointer", fontSize:11, fontFamily:"monospace", fontWeight:700 }}>
+                  ✏ editar
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Turno B */}
+          <div style={{ flex:1, background:winner==="B"?"#150a28":CARD, border:"2px solid "+(winner==="B"?PURPLE:BORDER), borderRadius:12, padding:14, textAlign:"center" }}>
+            <div style={{ fontSize:10, color:PURPLE, fontWeight:700, marginBottom:6 }}>{winner==="B"?"🏆 ":""}TURNO B</div>
+            {editandoB ? (
+              <div style={{ display:"flex", flexDirection:"column", gap:8, alignItems:"center" }}>
+                <input type="tel" inputMode="numeric" value={draftB} autoFocus
+                  onChange={e=>setDraftB(e.target.value.replace(/\D/g,""))}
+                  onKeyDown={e=>{ if(e.key==="Enter") salvarB(); if(e.key==="Escape") setEditandoB(false); }}
+                  style={{ width:"100%", background:BG, border:"2px solid "+PURPLE, color:PURPLE, borderRadius:8, padding:"8px", fontSize:28, fontWeight:900, fontFamily:"monospace", textAlign:"center", outline:"none", boxSizing:"border-box" }}
+                />
+                <div style={{ display:"flex", gap:6, width:"100%" }}>
+                  <button onClick={salvarB} style={{ flex:1, background:GREEN, border:"none", color:"#000", borderRadius:8, padding:"8px 0", cursor:"pointer", fontWeight:700, fontFamily:"monospace" }}>✓</button>
+                  <button onClick={()=>setEditandoB(false)} style={{ flex:1, background:"#1e2636", border:"1px solid "+BORDER, color:DIM, borderRadius:8, padding:"8px 0", cursor:"pointer", fontFamily:"monospace" }}>✕</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize:40, fontWeight:900, color:PURPLE, lineHeight:1, marginBottom:4 }}>{fmt(reg.prodB)}</div>
+                <div style={{ fontSize:10, color:DIM, marginBottom:10 }}>pçs produzidas</div>
+                <div style={{ background:"#1a1f2e", borderRadius:3, height:4, marginBottom:8 }}>
+                  <div style={{ width:(reg.metaB>0?Math.min(100,Math.round(reg.prodB/reg.metaB*100)):0)+"%", height:"100%", background:PURPLE, borderRadius:3 }} />
+                </div>
+                <div style={{ fontSize:11, color:reg.prodB>=reg.metaB?GREEN:RED, marginBottom:10 }}>
+                  {reg.prodB>=reg.metaB?"▲":"▼"} {fmt(Math.abs(reg.prodB-reg.metaB))} pçs {reg.prodB>=reg.metaB?"acima":"abaixo"}
+                </div>
+                <button onClick={()=>{ setDraftB(String(reg.prodB)); setEditandoB(true); }}
+                  style={{ background:"#1a2636", border:"1px solid "+PURPLE+"66", color:PURPLE, borderRadius:8, padding:"6px 14px", cursor:"pointer", fontSize:11, fontFamily:"monospace", fontWeight:700 }}>
+                  ✏ editar
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Diferença + Total */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", borderTop:"1px solid "+BORDER, paddingTop:12, marginBottom:10 }}>
+          <span style={{ fontSize:12, color:DIM }}>Diferença entre turnos</span>
+          <span style={{ fontSize:16, fontWeight:700, color:GOLD }}>{fmt(Math.abs(reg.prodA-reg.prodB))} pçs</span>
+        </div>
+        <div style={{ background:"#111622", border:"1px solid #2a3450", borderRadius:10, padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <span style={{ fontSize:12, color:DIM }}>Total A+B</span>
+          <span style={{ fontSize:18, fontWeight:900, color:GOLD }}>{fmt(reg.prodA+reg.prodB)} pçs</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function TelaDetalheHistorico({ m, onBack }) {
+  const [regsState, setRegsState] = useState(HISTORICO[m.id] || []);
+  const [diaFiltro, setDiaFiltro] = useState(null);
+  const [calAberto, setCalAberto] = useState(false);
+  const [modalReg, setModalReg] = useState(null);
+
+  const lista = diaFiltro ? regsState.filter(r=>r.data===diaFiltro) : regsState;
+
+  function salvarReg(atualizado) {
+    setRegsState(rs => rs.map(r => r.data===atualizado.data ? atualizado : r));
+    setModalReg(atualizado);
+  }
+
+  return (
+    <div style={{ flex:1, overflowY:"auto", background:BG, minHeight:"100vh", fontFamily:"monospace" }}>
+      {calAberto && <ModalCalendario diaAtivo={diaFiltro||""} onSelect={setDiaFiltro} onClose={()=>setCalAberto(false)} />}
+      {modalReg && <ModalDiaMaquina m={m} reg={modalReg} onClose={()=>setModalReg(null)} onSalvar={salvarReg} />}
+
+      {/* Header */}
+      <div style={{ background:BG, borderBottom:"1px solid #1a2235", padding:"10px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:50 }}>
+        <button onClick={onBack} style={{ background:"#1a2636", border:"1px solid #2a4a6a", color:BLUE, borderRadius:8, padding:"6px 14px", cursor:"pointer", fontSize:12, fontFamily:"monospace", fontWeight:700 }}>‹ voltar</button>
+        <div style={{ fontSize:11, color:DIM }}>HISTÓRICO · {m.id}</div>
+      </div>
+
+      <div style={{ padding:"16px 16px 80px" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+          <div>
+            <div style={{ fontSize:22, fontWeight:900, color:TEXT }}>{m.name}</div>
+            <div style={{ fontSize:11, color:ST[m.status].color, marginTop:2 }}>● {ST[m.status].label}</div>
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6 }}>
+            <button onClick={()=>setCalAberto(true)}
+              style={{ background:"#0a0f1e", border:"1px solid #2a3450", borderRadius:8, padding:"6px 12px", cursor:"pointer", fontSize:16 }}>📅</button>
+            {diaFiltro && (
+              <button onClick={()=>setDiaFiltro(null)}
+                style={{ background:"transparent", border:"none", color:RED, cursor:"pointer", fontSize:10, fontFamily:"monospace" }}>
+                ✕ limpar filtro
+              </button>
+            )}
+          </div>
+        </div>
+
+        {diaFiltro && (
+          <div style={{ background:"#1a2636", border:"1px solid "+BLUE+"44", borderRadius:8, padding:"8px 14px", marginBottom:14, fontSize:11, color:BLUE }}>
+            📅 Filtrando: {diaFiltro}
+          </div>
+        )}
+
+        {lista.length === 0 && (
+          <div style={{ textAlign:"center", padding:"40px 0", color:DIM, fontSize:13 }}>
+            Nenhum registro{diaFiltro?" para este dia":""}.
+          </div>
+        )}
+
+        {lista.map((r,i) => {
+          const diffA = r.prodA - r.metaA;
+          const diffB = r.prodB - r.metaB;
+          const pctA  = r.metaA>0 ? Math.min(100,Math.round(r.prodA/r.metaA*100)) : 0;
+          const pctB  = r.metaB>0 ? Math.min(100,Math.round(r.prodB/r.metaB*100)) : 0;
+          const winner = r.prodA>r.prodB?"A":r.prodB>r.prodA?"B":null;
+          return (
+            <div key={i} style={{ background:CARD, border:"1px solid "+BORDER, borderRadius:14, padding:"14px 16px", marginBottom:12 }}>
+              {/* Data clicável */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+                <div onClick={()=>setModalReg(r)} style={{ cursor:"pointer" }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:BLUE, textDecoration:"underline" }}>{r.data} ›</div>
+                  <div style={{ fontSize:10, color:DIM, marginTop:2 }}>{r.produto}</div>
+                </div>
+                {winner && <div style={{ fontSize:11, color:winner==="A"?BLUE:PURPLE, fontWeight:700 }}>🏆 Turno {winner}</div>}
+              </div>
+
+              {/* Turno A */}
+              <div style={{ marginBottom:8 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                  <span style={{ fontSize:11, color:BLUE, fontWeight:700 }}>Turno A</span>
+                  <span>
+                    <span style={{ fontSize:16, fontWeight:900, color:BLUE }}>{fmt(r.prodA)}</span>
+                    <span style={{ fontSize:10, color:DIM }}> pçs </span>
+                    {r.metaA>0 && <span style={{ fontSize:10, color:diffA>=0?GREEN:RED }}>{diffA>=0?"▲":"▼"}{fmt(Math.abs(diffA))}</span>}
+                  </span>
+                </div>
+                <div style={{ background:"#1a1f2e", borderRadius:3, height:4 }}>
+                  <div style={{ width:pctA+"%", height:"100%", background:BLUE, borderRadius:3 }} />
+                </div>
+              </div>
+
+              {/* Turno B */}
+              <div style={{ marginBottom:8 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                  <span style={{ fontSize:11, color:PURPLE, fontWeight:700 }}>Turno B</span>
+                  <span>
+                    <span style={{ fontSize:16, fontWeight:900, color:PURPLE }}>{fmt(r.prodB)}</span>
+                    <span style={{ fontSize:10, color:DIM }}> pçs </span>
+                    {r.metaB>0 && <span style={{ fontSize:10, color:diffB>=0?GREEN:RED }}>{diffB>=0?"▲":"▼"}{fmt(Math.abs(diffB))}</span>}
+                  </span>
+                </div>
+                <div style={{ background:"1a1f2e", borderRadius:3, height:4 }}>
+                  <div style={{ width:pctB+"%", height:"100%", background:PURPLE, borderRadius:3 }} />
+                </div>
+              </div>
+
+              {/* Total */}
+              <div style={{ display:"flex", justifyContent:"space-between", borderTop:"1px solid "+BORDER, paddingTop:8 }}>
+                <span style={{ fontSize:10, color:DIM }}>Total A+B</span>
+                <span style={{ fontSize:14, fontWeight:700, color:GOLD }}>{fmt(r.prodA+r.prodB)} pçs</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Aba Histórico principal — grade de extrusoras
+function AbaHistorico() {
+  const [detalhe, setDetalhe] = useState(null);
+
+  if (detalhe) return <TelaDetalheHistorico m={detalhe} onBack={()=>setDetalhe(null)} />;
+
+  return (
+    <div style={{ flex:1, overflowY:"auto", background:BG, minHeight:"100vh", fontFamily:"monospace", padding:"16px 16px 80px" }}>
+      {/* Header */}
+      <div style={{ marginBottom:20 }}>
+        <div style={{ fontSize:10, color:DIM, textTransform:"uppercase", letterSpacing:".1em" }}>HISTÓRICO</div>
+        <div style={{ fontSize:22, fontWeight:900, color:TEXT, marginTop:4 }}>Selecione a Extrusora</div>
+      </div>
+
+      {/* Grade 2x colunas */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+        {MAQUINAS.map(m => {
+          const s = ST[m.status];
+          const regs = (HISTORICO[m.id]||[]).length;
+          const produtos = [...new Set((HISTORICO[m.id]||[]).map(r=>r.produto))].length;
+          return (
+            <div key={m.id} onClick={()=>setDetalhe(m)}
+              style={{ background:CARD, border:"1px solid "+s.color+"44", borderRadius:16, padding:16, cursor:"pointer", minHeight:140, display:"flex", flexDirection:"column", justifyContent:"space-between" }}>
+              {/* Ícone */}
+              <div style={{ width:44, height:44, borderRadius:"50%", background:s.bg, border:"2px solid "+s.color+"66", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, marginBottom:10 }}>
+                🏭
+              </div>
+              {/* Nome */}
+              <div style={{ fontSize:18, fontWeight:900, color:TEXT, marginBottom:4 }}>{m.name}</div>
+              {/* Status */}
+              <div style={{ fontSize:10, color:s.color, fontWeight:700, marginBottom:8 }}>
+                <span style={{ display:"inline-block", width:6, height:6, borderRadius:"50%", background:s.color, marginRight:4, verticalAlign:"middle" }} />
+                {s.labelUp}
+              </div>
+              {/* Registros */}
+              {regs>0 ? (
+                <div style={{ fontSize:11, color:DIM }}>
+                  <div>{regs} registro{regs!==1?"s":""}</div>
+                  <div>{produtos} produto{produtos!==1?"s":""}</div>
+                </div>
+              ) : (
+                <div style={{ fontSize:11, color:DIM, fontStyle:"italic" }}>sem registros</div>
+              )}
+              {/* Toque */}
+              <div style={{ textAlign:"right", marginTop:8, fontSize:11, color:DIM }}>toque ›</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── APP PRINCIPAL ─────────────────────────────────────────────
+const USUARIOS=[
+  {user:"admin",       pass:"1234",role:"admin",       nome:"Administrador"},
+  {user:"encarregado", pass:"5678",role:"encarregado", nome:"Encarregado"},
+  {user:"operador",    pass:"0000",role:"operador",     nome:"Operador"},
+];
+
+function App(){
+  const[sessao,setSessao]=useState(null);
+  const[tab,setTab]=useState(1);
+  const[historico,setHistorico]=useState(HIST_INICIAL);
+  const[maquinas,setMaquinas]=useState(MAQUINAS_INICIAL);
+  const navStack=useRef([]);
+  const touchStartX=useRef(null);
+  const touchStartY=useRef(null);
+
+  // Verificar sessao salva
+  useEffect(()=>{
+    try{
+      const s=JSON.parse(localStorage.getItem("canaleta_sessao")||"null");
+      if(s) setSessao(s);
+      const d=JSON.parse(localStorage.getItem("canaleta_dados")||"null");
+      if(d){if(d.historico)setHistorico(d.historico);if(d.maquinas)setMaquinas(d.maquinas);}
+    }catch{}
+  },[]);
+
+  // Salvar dados automaticamente
+  useEffect(()=>{
+    if(!sessao)return;
+    try{localStorage.setItem("canaleta_dados",JSON.stringify({historico,maquinas}));}catch{}
+  },[historico,maquinas]);
+
+  // Botão voltar do celular
+  useEffect(()=>{
+    window.history.pushState({idx:0},"");
+    function handlePop(){
+      if(navStack.current.length>0){
+        const cb=navStack.current[navStack.current.length-1];
+        navStack.current.pop();
+        cb();
+        window.history.pushState({idx:navStack.current.length},"");
+      }else{
+        window.history.pushState({idx:0},"");
+      }
+    }
+    window.addEventListener("popstate",handlePop);
+    return()=>window.removeEventListener("popstate",handlePop);
+  },[]);
+
+  function navPush(cb){navStack.current.push(cb);window.history.pushState({idx:navStack.current.length},"");}
+  function navPop(){navStack.current.pop();}
+
+  function onTS(e){touchStartX.current=e.touches[0].clientX;touchStartY.current=e.touches[0].clientY;}
+  function onTE(e){
+    if(touchStartX.current===null)return;
+    const dx=touchStartX.current-e.changedTouches[0].clientX;
+    const dy=Math.abs((touchStartY.current||0)-e.changedTouches[0].clientY);
+    if(Math.abs(dx)<60||dy>40){touchStartX.current=null;return;}
+    if(dx>0)setTab(t=>Math.min(TABS.length-1,t+1));
+    else setTab(t=>Math.max(0,t-1));
+    touchStartX.current=null;
+  }
+
+  function handleLogin(usuario){
+    setSessao(usuario);
+    localStorage.setItem("canaleta_sessao",JSON.stringify(usuario));
+  }
+  function handleLogout(){
+    setSessao(null);
+    localStorage.removeItem("canaleta_sessao");
+    navStack.current=[];
+  }
+  function handleImport(data){
+    if(data.historico)setHistorico(data.historico);
+    if(data.maquinas)setMaquinas(data.maquinas);
+  }
+  function handleExport(){
+    const data=JSON.stringify({historico,maquinas},null,2);
+    const blob=new Blob([data],{type:"application/json"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;
+    a.download="canaleta-backup-"+new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")+".json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if(!sessao){
+    return <TelaLogin onLogin={handleLogin} onImport={handleImport} onExport={handleExport}/>;
+  }
+
+  const subLabels=["📋 Resumo","⚙ Canaleta","📊 Produção","📋 Histórico"];
+  return (
+    <div style={{height:"100vh",background:BG,display:"flex",flexDirection:"column",fontFamily:"monospace"}}
+      onTouchStart={onTS} onTouchEnd={onTE}>
+      <Header sub={subLabels[tab]} onLogout={handleLogout}/>
+      <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+        {tab===0&&<AbaResumo historico={historico} setHistorico={setHistorico} sessao={sessao}/>}
+        {tab===1&&<AbaCanaleta maquinas={maquinas} setMaquinas={setMaquinas} navPush={navPush} navPop={navPop} sessao={sessao}/>}
+        {tab===2&&<AbaProducao historico={historico}/>}
+        {tab===3&&<AbaHistorico navPush={navPush} navPop={navPop}/>}
+      </div>
+      <TabBar tab={tab} setTab={setTab}/>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+  </script>
+</body>
+</html>
